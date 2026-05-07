@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { MessageSquare, CheckCircle, Package, Blocks } from 'lucide-react';
+import { MessageSquare, CheckCircle, Package, Blocks, Settings as SettingsIcon } from 'lucide-react';
 import clsx from 'clsx';
 
 const navItems = [
@@ -7,6 +7,7 @@ const navItems = [
   { path: '/approvals', icon: CheckCircle, label: 'Approvals' },
   { path: '/programs', icon: Package, label: 'Programs' },
   { path: '/integrations', icon: Blocks, label: 'Integrations' },
+  { path: '/settings', icon: SettingsIcon, label: 'Settings' },
 ];
 
 export function Layout() {

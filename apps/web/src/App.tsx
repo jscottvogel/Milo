@@ -4,6 +4,7 @@ import { Chat } from './pages/Chat';
 import { Approvals } from './pages/Approvals';
 import { Integrations } from './pages/Integrations';
 import { OAuthCallback } from './pages/OAuthCallback';
+import { Settings } from './pages/Settings';
 
 function Placeholder({ title }: { title: string }) {
   return (
@@ -23,6 +24,7 @@ function App() {
           <Route path="programs" element={<Placeholder title="Programs" />} />
           <Route path="integrations" element={<Integrations />} />
           <Route path="oauth/callback" element={<OAuthCallback />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>

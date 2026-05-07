@@ -43,6 +43,7 @@ export function Integrations() {
 
     // In a real app, we redirect to Google:
     // window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    console.debug("Mock Google OAuth Params:", params.toString());
     
     // For PoC without a real client ID, we'll just redirect locally with a mock code:
     window.location.href = `${REDIRECT_URI}?code=mock_auth_code_from_google&state=mock_state`;
