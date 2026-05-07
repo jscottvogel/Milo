@@ -13,8 +13,8 @@ COPY pyproject.toml uv.lock ./
 COPY packages/ packages/
 COPY apps/ apps/
 
-# Install dependencies system-wide for Lambda
-RUN uv sync --no-dev --system
+# Install dependencies system-wide for Lambda by exporting from the lockfile
+RUN uv export --no-dev > requirements.txt && uv pip install --system -r requirements.txt
 
 # We must set PYTHONPATH so Lambda can find our modules
 ENV PYTHONPATH=/var/task/apps/api:/var/task/packages/db:/var/task/packages/shared-schemas:/var/task/packages/agent
