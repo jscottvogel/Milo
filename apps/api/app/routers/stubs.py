@@ -7,15 +7,7 @@ def stub_response():
 
 # Phase 4, 5, 6 stubs removed
 
-# Phase 8
-@router.get("/integrations")
-def get_integrations(): stub_response()
-
-@router.post("/integrations/gmail/connect")
-def connect_gmail(): stub_response()
-
-@router.get("/integrations/oauth/callback")
-def oauth_callback(): stub_response()
+# Phase 8 (Implemented)
 
 # Phase 9
 @router.post("/billing/checkout")

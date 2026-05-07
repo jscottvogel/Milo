@@ -4,6 +4,7 @@ import logging
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
+import boto3
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from sqlalchemy.orm import Session
@@ -32,6 +33,18 @@ class AgentRunner:
         self.thread_memory = ThreadMemory(session, thread_id, tenant_id)
         self.program_memory = ProgramMemory(session)
         self.working_memory = WorkingMemory()
+        self.integration_tokens = self._load_integration_tokens()
+
+    def _load_integration_tokens(self) -> dict[str, str]:
+        tokens = {}
+        try:
+            ssm = boto3.client('ssm', region_name='us-east-1')
+            param_name = f"/milo/tenants/{self.tenant_id}/integrations/gmail/token"
+            response = ssm.get_parameter(Name=param_name, WithDecryption=True)
+            tokens['gmail'] = response['Parameter']['Value']
+        except Exception as e:
+            logger.debug(f"Failed to load integration tokens from SSM: {e}")
+        return tokens
         
     def _format_tools_for_bedrock(self) -> list[dict[str, Any]]:
         tools = []
@@ -72,7 +85,8 @@ class AgentRunner:
             session=self.session,
             tenant_id=self.tenant_id,
             milo_id=self.milo_id,
-            thread_id=self.thread_id
+            thread_id=self.thread_id,
+            integration_tokens=self.integration_tokens
         )
 
         turn_cost = 0.0

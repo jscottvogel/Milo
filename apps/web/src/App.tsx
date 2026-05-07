@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Chat } from './pages/Chat';
 import { Approvals } from './pages/Approvals';
+import { Integrations } from './pages/Integrations';
+import { OAuthCallback } from './pages/OAuthCallback';
 
 function Placeholder({ title }: { title: string }) {
   return (
@@ -19,7 +21,8 @@ function App() {
           <Route index element={<Chat />} />
           <Route path="approvals" element={<Approvals />} />
           <Route path="programs" element={<Placeholder title="Programs" />} />
-          <Route path="integrations" element={<Placeholder title="Integrations" />} />
+          <Route path="integrations" element={<Integrations />} />
+          <Route path="oauth/callback" element={<OAuthCallback />} />
         </Route>
       </Routes>
     </BrowserRouter>

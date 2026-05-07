@@ -8,3 +8,4 @@ class AgentContext:
     tenant_id: str
     milo_id: str
     thread_id: str
+    integration_tokens: dict[str, str] = field(default_factory=dict)
