@@ -1,4 +1,4 @@
-.PHONY: setup lint typecheck test test-unit test-integration test-e2e cdk-synth clean format eval dev dev-api dev-web
+.PHONY: setup lint typecheck test test-unit test-integration test-e2e cdk-synth clean format eval dev dev-api dev-web export-openapi
 
 setup:
 	@echo "Setting up Python workspace..."
@@ -21,7 +21,8 @@ test-unit:
 	pnpm exec vitest run --passWithNoTests || true
 
 test-integration:
-	@echo "Integration tests not yet implemented"
+	@echo "Running API integration tests..."
+	cd apps/api && uv run pytest -q --cov=app --cov-fail-under=75
 
 test-e2e:
 	@echo "E2E tests not yet implemented"
@@ -48,7 +49,13 @@ eval:
 dev: dev-api dev-web
 
 dev-api:
-	@echo "Dev API not yet implemented"
+	@echo "Starting Dev API..."
+	cd apps/api && uv run uvicorn app.main:app --reload --port 8000
+
+export-openapi:
+	@echo "Exporting OpenAPI schema..."
+	cd apps/api && uv run python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2))" > ../../packages/shared-types/openapi.json
+	@echo "OpenAPI schema exported."
 
 dev-web:
 	@echo "Dev Web not yet implemented"

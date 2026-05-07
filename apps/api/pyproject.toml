@@ -2,5 +2,31 @@
 name = "api"
 version = "0.1.0"
 description = "Milo API"
+readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115.8",
+    "uvicorn>=0.34.0",
+    "pydantic-settings>=2.7.1",
+    "python-jose[cryptography]>=3.3.0",
+    "httpx>=0.28.1",
+    "boto3>=1.36.0",
+    "db",
+    "shared-schemas",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.3",
+    "pytest-cov>=6.0.0",
+    "moto>=5.0.28",
+]
+
+[tool.uv.sources]
+db = { workspace = true }
+shared-schemas = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
