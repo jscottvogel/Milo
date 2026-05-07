@@ -7,6 +7,7 @@ import { IdentityStack } from '../lib/identity-stack';
 import { WorkerStack } from '../lib/worker-stack';
 import { ApiStack } from '../lib/api-stack';
 import { WebStack } from '../lib/web-stack';
+import { ObservabilityStack } from '../lib/observability-stack';
 
 const app = new cdk.App();
 const mode: 'poc' | 'prod' = app.node.tryGetContext('mode') === 'prod' ? 'prod' : 'poc';

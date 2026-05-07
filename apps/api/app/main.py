@@ -13,6 +13,13 @@ from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.tenant_context import TenantContextMiddleware
 from app.routers import health, tenants, threads, users, approvals, milos, programs, integrations, billing
 
+if os.getenv("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN"),
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
+
 app = FastAPI(
     title="Milo API",
     version="0.1.0",

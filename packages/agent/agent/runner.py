@@ -1,10 +1,12 @@
 import datetime
 import json
 import logging
+import os
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 import boto3
+from langfuse import Langfuse
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from sqlalchemy.orm import Session
@@ -34,6 +36,7 @@ class AgentRunner:
         self.program_memory = ProgramMemory(session)
         self.working_memory = WorkingMemory()
         self.integration_tokens = self._load_integration_tokens()
+        self.langfuse = Langfuse() if os.getenv("LANGFUSE_PUBLIC_KEY") else None
 
     def _load_integration_tokens(self) -> dict[str, str]:
         tokens = {}
@@ -265,4 +268,19 @@ class AgentRunner:
         )
         self.session.add(run)
         self.session.commit()
+
+        # Emit CloudWatch Custom Metrics
+        try:
+            cw = boto3.client('cloudwatch', region_name='us-east-1')
+            cw.put_metric_data(
+                Namespace='Milo',
+                MetricData=[
+                    {'MetricName': 'tokens_in', 'Value': turn_input_tokens, 'Unit': 'Count'},
+                    {'MetricName': 'tokens_out', 'Value': turn_output_tokens, 'Unit': 'Count'},
+                    {'MetricName': 'cost_usd', 'Value': turn_cost, 'Unit': 'Count'},
+                    {'MetricName': 'tool_calls', 'Value': len(tool_calls), 'Unit': 'Count'}
+                ]
+            )
+        except Exception as e:
+            logger.debug(f"Failed to emit CW metrics: {e}")
 
