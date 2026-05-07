@@ -15,7 +15,8 @@ export function Approvals() {
 
   const fetchApprovals = async () => {
     try {
-      const res = await fetch('http://localhost:8000/v1/approvals?status=pending', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${API_URL}/v1/approvals?status=pending`, {
         headers: {
           'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
         }
@@ -40,7 +41,8 @@ export function Approvals() {
     setApprovals(prev => prev.filter(a => a.id !== id));
     
     try {
-      await fetch(`http://localhost:8000/v1/approvals/${id}/decide`, {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      await fetch(`${API_URL}/v1/approvals/${id}/decide`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

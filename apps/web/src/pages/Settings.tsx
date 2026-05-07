@@ -8,7 +8,8 @@ export function Settings() {
   const handleManageSubscription = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/v1/billing/portal', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${API_URL}/v1/billing/portal`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

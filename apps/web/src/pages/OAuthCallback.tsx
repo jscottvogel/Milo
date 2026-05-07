@@ -21,7 +21,8 @@ export function OAuthCallback() {
     // In a real environment, missing verifier is an error. 
     // We mocked the redirect for the PoC, so verifier might be present if they clicked the button.
     
-    fetch('http://localhost:8000/v1/integrations/oauth/callback', {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    fetch(`${API_URL}/v1/integrations/oauth/callback`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

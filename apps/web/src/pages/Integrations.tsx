@@ -4,7 +4,7 @@ import { generateCodeVerifier, generateCodeChallenge } from '../utils/oauth';
 
 // Mock Config
 const GOOGLE_CLIENT_ID = 'mock-client-id.apps.googleusercontent.com';
-const REDIRECT_URI = 'http://localhost:5173/oauth/callback';
+const REDIRECT_URI = window.location.origin + '/oauth/callback';
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send';
 
 export function Integrations() {
@@ -13,7 +13,8 @@ export function Integrations() {
 
   useEffect(() => {
     // Fetch current integrations status
-    fetch('http://localhost:8000/v1/integrations', {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    fetch(`${API_URL}/v1/integrations`, {
       headers: { 'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001' }
     })
       .then(res => res.json())

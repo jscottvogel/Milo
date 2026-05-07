@@ -39,7 +39,8 @@ export function Chat() {
     const threadId = 'thread-123';
     
     try {
-      const response = await fetch(`http://localhost:8000/v1/threads/${threadId}/messages`, {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/v1/threads/${threadId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
