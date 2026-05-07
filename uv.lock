@@ -1,0 +1,43 @@
+version = 1
+revision = 3
+requires-python = "==3.12.*"
+
+[manifest]
+members = [
+    "agent",
+    "api",
+    "db",
+    "mcp-template",
+    "milo",
+    "shared-schemas",
+]
+
+[[package]]
+name = "agent"
+version = "0.1.0"
+source = { virtual = "packages/agent" }
+
+[[package]]
+name = "api"
+version = "0.1.0"
+source = { virtual = "apps/api" }
+
+[[package]]
+name = "db"
+version = "0.1.0"
+source = { virtual = "packages/db" }
+
+[[package]]
+name = "mcp-template"
+version = "0.1.0"
+source = { virtual = "services/mcp/_template" }
+
+[[package]]
+name = "milo"
+version = "0.1.0"
+source = { virtual = "." }
+
+[[package]]
+name = "shared-schemas"
+version = "0.1.0"
+source = { virtual = "packages/shared-schemas" }
