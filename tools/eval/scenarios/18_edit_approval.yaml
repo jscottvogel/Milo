@@ -1,0 +1,8 @@
+name: "Edit Approval Flow"
+description: "Agent creates approval, user edits the payload"
+messages:
+  - role: "user"
+    content: "Draft an email."
+expected_tools:
+  - "email.draft"
+tags: ["approvals"]

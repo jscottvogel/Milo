@@ -21,7 +21,7 @@ async def test_agent_runner():
 
         mock_bedrock.return_value.invoke_with_streaming = mock_stream
 
-        runner = AgentRunner(session, "tenant1", "thread1", "milo1")
+        runner = AgentRunner(session, "00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003")
 
         events = []
         async for event in runner.run_turn("hello"):

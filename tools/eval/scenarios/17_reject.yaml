@@ -1,0 +1,8 @@
+name: "Rejection Flow"
+description: "Agent creates approval, user rejects it"
+messages:
+  - role: "user"
+    content: "Send an angry email to the team."
+expected_tools:
+  - "email.draft"
+tags: ["approvals"]

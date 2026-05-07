@@ -4,6 +4,7 @@ import * as cdk from 'aws-cdk-lib';
 
 import { DatabaseStack } from '../lib/database-stack';
 import { IdentityStack } from '../lib/identity-stack';
+import { WorkerStack } from '../lib/worker-stack';
 
 const app = new cdk.App();
 const mode: 'poc' | 'prod' = app.node.tryGetContext('mode') === 'prod' ? 'prod' : 'poc';
@@ -15,3 +16,4 @@ const env = {
 
 new DatabaseStack(app, `MiloDatabaseStack-${mode}`, { mode, env });
 new IdentityStack(app, `MiloIdentityStack-${mode}`, { mode, env });
+new WorkerStack(app, `MiloWorkerStack-${mode}`, { mode, env });

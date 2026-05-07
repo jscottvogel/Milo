@@ -1,0 +1,8 @@
+name: "Approval Expiration"
+description: "Agent creates approval that expires"
+messages:
+  - role: "user"
+    content: "Draft an email that we will forget to approve."
+expected_tools:
+  - "email.draft"
+tags: ["approvals"]

@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -14,8 +15,10 @@ from agent.memory.thread import ThreadMemory
 from agent.memory.working import WorkingMemory
 from agent.prompts.builder import build_system_prompt
 from agent.tools.context import AgentContext
+from agent.tools.context import AgentContext
 from agent.tools.registry import registry
 from db.models import AgentRun
+from db.models.identity import Milo
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +172,12 @@ class AgentRunner:
                 # Tool calls are typically saved to ToolCall db model, but we skip deep persistence for PoC unless needed
                 
             if stop_reason == "tool_use" and tool_calls:
+                # Fetch Milo autonomy levels
+                milo_uuid = uuid.UUID(self.milo_id) if isinstance(self.milo_id, str) else self.milo_id
+                milo = self.session.get(Milo, milo_uuid)
+                autonomy_levels = milo.autonomy_levels if milo else {}
+                restricted_tools = ["sms.send", "esign.send", "quickbooks.write"]
+
                 # Process tool calls
                 needs_approval = False
                 for tc in tool_calls:
@@ -179,7 +188,12 @@ class AgentRunner:
                         recent_messages.append(tool_msg)
                         continue
                         
-                    if tool.requires_approval:
+                    requires_approval = tool.requires_approval
+                    level = autonomy_levels.get(tool.name, "draft")
+                    if requires_approval and level == "auto" and tool.name not in restricted_tools:
+                        requires_approval = False
+
+                    if requires_approval:
                         # Create approval and pause
                         approval = create_approval(
                             session=self.session,

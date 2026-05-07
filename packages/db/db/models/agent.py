@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, Numeric, String
+from sqlalchemy import CheckConstraint, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -82,4 +82,19 @@ class AgentRun(TenantBoundBase):
         CheckConstraint(
             "status IN ('running', 'paused', 'done', 'failed')", name="chk_agent_run_status"
         ),
+    )
+
+
+class Notification(TenantBoundBase):
+    __tablename__ = "notifications"
+
+    milo_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("milos.id", ondelete="CASCADE"))
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    read_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("type IN ('approval_required', 'warning', 'info')", name="chk_notification_type"),
     )

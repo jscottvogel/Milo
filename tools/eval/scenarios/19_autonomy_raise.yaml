@@ -1,0 +1,8 @@
+name: "Autonomy Raise"
+description: "Agent uses tool without approval because autonomy is auto"
+messages:
+  - role: "user"
+    content: "Do something with storage."
+expected_tools:
+  - "storage.read"
+tags: ["approvals"]

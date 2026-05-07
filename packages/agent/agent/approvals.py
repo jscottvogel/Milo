@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from db.models.agent import Approval
+from db.models.agent import Approval, Notification
 
 
 def create_approval(
@@ -28,7 +28,17 @@ def create_approval(
         status="pending",
         expires_at=expires_at
     )
+    
+    notification = Notification(
+        tenant_id=uuid.UUID(tenant_id),
+        milo_id=uuid.UUID(milo_id),
+        type="approval_required",
+        title="Action Approval Required",
+        message=f"Milo wants to perform {tool_name} and requires your approval."
+    )
+    
     session.add(approval)
+    session.add(notification)
     session.commit()
     session.refresh(approval)
     return approval
