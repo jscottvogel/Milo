@@ -12,12 +12,7 @@ def get_programs(): stub_response()
 @router.post("/programs")
 def create_program(): stub_response()
 
-# Phase 4
-@router.get("/approvals")
-def get_approvals(): stub_response()
-
-@router.post("/approvals/{id}/decide")
-def decide_approval(): stub_response()
+# Phase 4 stubs removed
 
 # Phase 5
 @router.patch("/milos/{id}/autonomy")

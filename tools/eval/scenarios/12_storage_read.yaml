@@ -1,0 +1,7 @@
+name: "Storage Read"
+description: "Agent uses storage.read to access a file"
+messages:
+  - role: "user"
+    content: "Read the contents of the config.json file in my storage."
+expected_tools:
+  - "storage.read"

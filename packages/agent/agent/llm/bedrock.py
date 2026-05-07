@@ -131,3 +131,37 @@ class BedrockClient:
             else:
                 logger.error(f"Bedrock invocation failed: {e}")
                 raise e
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=5),
+        retry=retry_if_exception_type(ClientError)
+    )
+    async def embed_text(self, text: str) -> list[float]:
+        """
+        Embeds a string using Titan Text Embeddings v2.
+        """
+        import json
+        model_id = "amazon.titan-embed-text-v2:0"
+        
+        kwargs = {
+            "modelId": model_id,
+            "contentType": "application/json",
+            "accept": "application/json",
+            "body": json.dumps({"inputText": text})
+        }
+        
+        try:
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(None, lambda: self.client.invoke_model(**kwargs))
+            
+            response_body = json.loads(response.get('body').read())
+            return response_body.get('embedding')
+            
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code")
+            if error_code == "ThrottlingException":
+                logger.warning("Bedrock ThrottlingException on embedding. Retrying...")
+                raise e
+            logger.error(f"Bedrock embedding failed: {e}")
+            raise e

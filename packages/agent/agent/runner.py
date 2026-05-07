@@ -1,17 +1,21 @@
 import datetime
+import json
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from db.models import AgentRun
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from sqlalchemy.orm import Session
 
+from agent.approvals import create_approval
 from agent.llm.bedrock import BedrockClient, LLMUsage
 from agent.memory.program import ProgramMemory
 from agent.memory.thread import ThreadMemory
 from agent.memory.working import WorkingMemory
 from agent.prompts.builder import build_system_prompt
+from agent.tools.context import AgentContext
+from agent.tools.registry import registry
+from db.models import AgentRun
 
 logger = logging.getLogger(__name__)
 
@@ -25,63 +29,212 @@ class AgentRunner:
         self.thread_memory = ThreadMemory(session, thread_id, tenant_id)
         self.program_memory = ProgramMemory(session)
         self.working_memory = WorkingMemory()
+        
+    def _format_tools_for_bedrock(self) -> list[dict[str, Any]]:
+        tools = []
+        for t in registry.get_all_tools():
+            schema = t.input_schema.model_json_schema()
+            # Remove pydantic specific fields that might confuse bedrock
+            if "$defs" in schema:
+                del schema["$defs"]
+            tools.append({
+                "toolSpec": {
+                    "name": t.name,
+                    "description": t.description,
+                    "inputSchema": {
+                        "json": schema
+                    }
+                }
+            })
+        return tools
 
-    async def run_turn(self, user_message: str) -> AsyncGenerator[dict[str, Any], None]:
+    async def run_turn(self, user_message: str | None = None) -> AsyncGenerator[dict[str, Any], None]:
         # 1. Load context
         recent_messages = self.thread_memory.load_recent_messages()
-        recent_messages.append(HumanMessage(content=user_message))
-        self.thread_memory.save_message("user", user_message)
+        
+        if user_message:
+            recent_messages.append(HumanMessage(content=user_message))
+            self.thread_memory.save_message("user", user_message)
 
-        program_context = self.program_memory.get_context() # Placeholder
+        program_context = self.program_memory.get_context()
 
         # 2. Build system prompt
         system_prompt = build_system_prompt(
             persona_pack="sme",
             program_context=program_context
         )
-
-        # 3. Stream from LLM
-        # For Phase 3, we format messages for bedrock (dict format)
-        formatted_messages = []
-        for m in recent_messages:
-            role = "user" if isinstance(m, HumanMessage) else "assistant"
-            formatted_messages.append({"role": role, "content": [{"text": m.content}]})
-
-        stream = self.llm.invoke_with_streaming(
-            messages=formatted_messages,
-            system=system_prompt,
-            tools=[], # No tools yet
-            model="primary"
+        
+        bedrock_tools = self._format_tools_for_bedrock()
+        context = AgentContext(
+            session=self.session,
+            tenant_id=self.tenant_id,
+            milo_id=self.milo_id,
+            thread_id=self.thread_id
         )
 
-        assistant_content = ""
-        total_cost = 0.0
+        turn_cost = 0.0
+        turn_input_tokens = 0
+        turn_output_tokens = 0
+        max_loops = 5
+        loop_count = 0
 
-        async for event in stream:
-            if event["type"] == "token":
-                assistant_content += event["content"]
-                yield event
-            elif event["type"] == "usage":
-                metrics: LLMUsage = event["metrics"]
-                total_cost += metrics.cost_usd
+        while loop_count < max_loops:
+            loop_count += 1
+            
+            # Format messages for bedrock
+            formatted_messages = []
+            for m in recent_messages:
+                if isinstance(m, HumanMessage):
+                    formatted_messages.append({"role": "user", "content": [{"text": m.content}]})
+                elif isinstance(m, AIMessage):
+                    content = []
+                    if m.content:
+                        content.append({"text": m.content})
+                    if hasattr(m, "tool_calls") and m.tool_calls:
+                        for tc in m.tool_calls:
+                            content.append({
+                                "toolUse": {
+                                    "toolUseId": tc["id"],
+                                    "name": tc["name"],
+                                    "input": tc["args"]
+                                }
+                            })
+                    formatted_messages.append({"role": "assistant", "content": content})
+                elif isinstance(m, ToolMessage):
+                    # We must pack ToolMessages into a user message with toolResult
+                    # In Langchain bedrock integration, ToolMessages are appended to a user message
+                    # But for Bedrock direct converse API, they go as 'user' role with 'toolResult' block
+                    formatted_messages.append({
+                        "role": "user",
+                        "content": [{
+                            "toolResult": {
+                                "toolUseId": m.tool_call_id,
+                                "content": [{"text": str(m.content)}]
+                            }
+                        }]
+                    })
 
-                # Persist AgentRun
-                run = AgentRun(
-                    tenant_id=self.tenant_id,
-                    milo_id=self.milo_id,
-                    thread_id=self.thread_id,
-                    started_at=datetime.datetime.now(datetime.UTC),
-                    status="done",
-                    total_input_tokens=metrics.input_tokens,
-                    total_output_tokens=metrics.output_tokens,
-                    cost_usd=metrics.cost_usd,
-                    turn_count=1
-                )
-                self.session.add(run)
-                self.session.commit()
-            elif event["type"] == "message_stop":
-                yield {"type": "done", "reason": event.get("stopReason")}
+            stream = self.llm.invoke_with_streaming(
+                messages=formatted_messages,
+                system=system_prompt,
+                tools=bedrock_tools,
+                model="primary"
+            )
 
-        # Save assistant message
-        if assistant_content:
-            self.thread_memory.save_message("assistant", assistant_content)
+            assistant_content = ""
+            current_tool_call = None
+            tool_calls = []
+            stop_reason = None
+
+            async for event in stream:
+                if event["type"] == "token":
+                    assistant_content += event["content"]
+                    yield event
+                elif event["type"] == "tool_use_start":
+                    current_tool_call = {
+                        "id": event["toolUseId"],
+                        "name": event["name"],
+                        "args_str": ""
+                    }
+                    yield event
+                elif event["type"] == "tool_use_input_delta":
+                    if current_tool_call:
+                        current_tool_call["args_str"] += event["delta"]
+                    yield event
+                elif event["type"] == "message_stop":
+                    stop_reason = event.get("stopReason")
+                    if current_tool_call:
+                        try:
+                            current_tool_call["args"] = json.loads(current_tool_call["args_str"])
+                        except Exception:
+                            current_tool_call["args"] = {}
+                        tool_calls.append(current_tool_call)
+                    
+                    yield {"type": "done", "reason": stop_reason}
+                elif event["type"] == "usage":
+                    metrics: LLMUsage = event["metrics"]
+                    turn_cost += metrics.cost_usd
+                    turn_input_tokens += metrics.input_tokens
+                    turn_output_tokens += metrics.output_tokens
+
+            # Save assistant message with potential tool calls
+            ai_msg = AIMessage(content=assistant_content, tool_calls=[
+                {"name": tc["name"], "args": tc["args"], "id": tc["id"]} for tc in tool_calls
+            ])
+            recent_messages.append(ai_msg)
+            
+            # Save the raw text content to thread memory if there was any
+            if assistant_content:
+                self.thread_memory.save_message("assistant", assistant_content)
+                # Tool calls are typically saved to ToolCall db model, but we skip deep persistence for PoC unless needed
+                
+            if stop_reason == "tool_use" and tool_calls:
+                # Process tool calls
+                needs_approval = False
+                for tc in tool_calls:
+                    tool = registry.get_tool(tc["name"])
+                    if not tool:
+                        # Yield error
+                        tool_msg = ToolMessage(content=f"Error: Tool {tc['name']} not found", tool_call_id=tc["id"])
+                        recent_messages.append(tool_msg)
+                        continue
+                        
+                    if tool.requires_approval:
+                        # Create approval and pause
+                        approval = create_approval(
+                            session=self.session,
+                            tenant_id=self.tenant_id,
+                            milo_id=self.milo_id,
+                            thread_id=self.thread_id,
+                            tool_name=tool.name,
+                            payload=tc["args"]
+                        )
+                        yield {
+                            "type": "approval_request",
+                            "approval_id": str(approval.id),
+                            "tool_name": tool.name,
+                            "payload": tc["args"]
+                        }
+                        needs_approval = True
+                        break # Stop processing other tools if one needs approval
+                    else:
+                        # Execute automatically
+                        try:
+                            result = await tool.invoke(tc["args"], context)
+                            result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+                            # Wrap untrusted content (Phase 4 requirement)
+                            if tool.name in ["web.fetch", "web.search", "storage.read"]:
+                                result_str = f"<untrusted>\n{result_str}\n</untrusted>"
+                        except Exception as e:
+                            logger.error(f"Tool {tool.name} failed: {e}")
+                            result_str = f"Error: {e}"
+                            
+                        tool_msg = ToolMessage(content=result_str, tool_call_id=tc["id"])
+                        recent_messages.append(tool_msg)
+                        
+                        yield {
+                            "type": "tool_result",
+                            "tool_name": tool.name,
+                            "result": result
+                        }
+                        
+                if needs_approval:
+                    break # Break out of loop, run is paused
+            else:
+                break # Not a tool use, or no tool calls, run is complete
+
+        # Persist AgentRun
+        run = AgentRun(
+            tenant_id=uuid.UUID(self.tenant_id) if isinstance(self.tenant_id, str) else self.tenant_id,
+            milo_id=uuid.UUID(self.milo_id) if isinstance(self.milo_id, str) else self.milo_id,
+            thread_id=uuid.UUID(self.thread_id) if isinstance(self.thread_id, str) else self.thread_id,
+            started_at=datetime.datetime.now(datetime.UTC),
+            status="done" if not tool_calls or not tool_calls[-1].get("requires_approval") else "paused",
+            total_input_tokens=turn_input_tokens,
+            total_output_tokens=turn_output_tokens,
+            cost_usd=turn_cost,
+            turn_count=loop_count
+        )
+        self.session.add(run)
+        self.session.commit()
+

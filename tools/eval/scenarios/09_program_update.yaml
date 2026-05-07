@@ -1,0 +1,7 @@
+name: "Program Update"
+description: "Agent uses program.update to modify a program"
+messages:
+  - role: "user"
+    content: "Update the status of the 'Alpha Release' program to 'executing'."
+expected_tools:
+  - "program.update"

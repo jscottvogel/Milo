@@ -1,0 +1,7 @@
+name: "Memory Write"
+description: "Agent uses memory.write to store a fact"
+messages:
+  - role: "user"
+    content: "Please remember that the staging server IP changed to 192.168.1.100."
+expected_tools:
+  - "memory.write"

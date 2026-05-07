@@ -1,0 +1,7 @@
+name: "Calendar Read"
+description: "Agent uses calendar.read to check schedule"
+messages:
+  - role: "user"
+    content: "What meetings do I have scheduled for tomorrow?"
+expected_tools:
+  - "calendar.read"

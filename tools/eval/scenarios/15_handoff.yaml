@@ -1,0 +1,7 @@
+name: "Human Handoff"
+description: "Agent uses handoff.human to escalate"
+messages:
+  - role: "user"
+    content: "I'm extremely upset, this is a critical production incident and you can't help me! Get me a human now!"
+expected_tools:
+  - "handoff.human"

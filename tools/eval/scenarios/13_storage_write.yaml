@@ -1,0 +1,7 @@
+name: "Storage Write"
+description: "Agent uses storage.write to save a file"
+messages:
+  - role: "user"
+    content: "Save the following notes to a file called notes.txt in my storage."
+expected_tools:
+  - "storage.write"

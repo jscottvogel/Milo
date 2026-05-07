@@ -1,0 +1,7 @@
+name: "Web Search"
+description: "Agent uses web.search to find current information"
+messages:
+  - role: "user"
+    content: "What are the latest news about generative AI models?"
+expected_tools:
+  - "web.search"

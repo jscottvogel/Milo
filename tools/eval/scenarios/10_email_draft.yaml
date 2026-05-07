@@ -1,0 +1,7 @@
+name: "Email Draft"
+description: "Agent uses email.draft to prepare an email"
+messages:
+  - role: "user"
+    content: "Draft an email to the team letting them know the build is fixed."
+expected_tools:
+  - "email.draft"

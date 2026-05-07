@@ -1,0 +1,7 @@
+name: "Memory Search"
+description: "Agent uses memory.search to find past facts"
+messages:
+  - role: "user"
+    content: "What did we decide about the database migration strategy yesterday?"
+expected_tools:
+  - "memory.search"

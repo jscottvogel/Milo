@@ -6,12 +6,12 @@ import { DatabaseStack } from '../lib/database-stack';
 import { IdentityStack } from '../lib/identity-stack';
 
 const app = new cdk.App();
-const mode = app.node.tryGetContext('mode') || 'poc';
+const mode: 'poc' | 'prod' = app.node.tryGetContext('mode') === 'prod' ? 'prod' : 'poc';
 
 const env = {
-  account: process.env.CDK_DEFAULT_ACCOUNT,
-  region: process.env.CDK_DEFAULT_REGION,
+  account: process.env.CDK_DEFAULT_ACCOUNT || process.env.AWS_ACCOUNT_ID,
+  region: process.env.CDK_DEFAULT_REGION || process.env.AWS_REGION || 'us-east-1',
 };
 
-new DatabaseStack(app, `MiloDatabaseStack-${mode}`, { mode: mode as 'poc' | 'prod', env });
+new DatabaseStack(app, `MiloDatabaseStack-${mode}`, { mode, env });
 new IdentityStack(app, `MiloIdentityStack-${mode}`, { mode, env });

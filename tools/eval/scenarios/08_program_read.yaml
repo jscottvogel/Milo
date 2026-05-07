@@ -1,0 +1,7 @@
+name: "Program Read"
+description: "Agent uses program.read to check active programs"
+messages:
+  - role: "user"
+    content: "Can you list all my active programs?"
+expected_tools:
+  - "program.read"
