@@ -1,19 +1,17 @@
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from fastapi.exceptions import RequestValidationError
 
-from app.config import settings
-from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.auth import AuthMiddleware
-from app.middleware.tenant_context import TenantContextMiddleware
 from app.middleware.error_handler import (
     custom_http_exception_handler,
+    global_exception_handler,
     validation_exception_handler,
-    global_exception_handler
 )
-
-from app.routers import health, users, tenants, stubs
+from app.middleware.logging import StructuredLoggingMiddleware
+from app.middleware.tenant_context import TenantContextMiddleware
+from app.routers import health, stubs, tenants, threads, users
 
 app = FastAPI(
     title="Milo API",
@@ -49,4 +47,5 @@ app.add_exception_handler(Exception, global_exception_handler)
 app.include_router(health.router)
 app.include_router(users.router)
 app.include_router(tenants.router)
+app.include_router(threads.router)
 app.include_router(stubs.router)

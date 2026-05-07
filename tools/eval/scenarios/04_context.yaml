@@ -1,0 +1,5 @@
+name: "Context Load Test"
+turns:
+  - user: "Summarize the context."
+    expected:
+      response_contains: ""

@@ -13,6 +13,7 @@ dependencies = [
     "boto3>=1.36.0",
     "db",
     "shared-schemas",
+    "sse-starlette>=3.4.2",
 ]
 
 [project.optional-dependencies]

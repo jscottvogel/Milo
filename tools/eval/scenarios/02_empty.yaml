@@ -1,0 +1,5 @@
+name: "Empty Program Greeting"
+turns:
+  - user: "What program are we working on?"
+    expected:
+      response_contains: "No active program"

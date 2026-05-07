@@ -1,10 +1,7 @@
-import pytest
+from app.config import settings
+from app.middleware.auth import AuthMiddleware
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from jose import jwt
-
-from app.middleware.auth import AuthMiddleware
-from app.config import settings
 
 app = FastAPI()
 app.add_middleware(AuthMiddleware)

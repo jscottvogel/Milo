@@ -1,0 +1,5 @@
+name: "Bedrock Cost Cap Test"
+turns:
+  - user: "Repeat after me: test"
+    expected:
+      response_contains: "test"

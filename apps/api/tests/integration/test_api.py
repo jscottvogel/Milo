@@ -1,8 +1,7 @@
-import pytest
-from fastapi.testclient import TestClient
 import uuid
 
 from app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -19,7 +18,7 @@ def test_create_tenant():
     valid_uuid = str(uuid.uuid4())
     slug = f"test-tenant-{valid_uuid[:8]}"
     response = client.post(
-        "/v1/tenants", 
+        "/v1/tenants",
         json={"name": "Test Tenant", "slug": slug},
         headers={"Authorization": f"Bearer dev_{valid_uuid}"}
     )
@@ -50,7 +49,7 @@ def test_validation_error():
     valid_uuid = str(uuid.uuid4())
     # Missing required 'slug' field
     response = client.post(
-        "/v1/tenants", 
+        "/v1/tenants",
         json={"name": "Test Tenant"},
         headers={"Authorization": f"Bearer dev_{valid_uuid}"}
     )

@@ -12,16 +12,6 @@ def get_programs(): stub_response()
 @router.post("/programs")
 def create_program(): stub_response()
 
-@router.get("/threads")
-def get_threads(): stub_response()
-
-@router.post("/threads")
-def create_thread(): stub_response()
-
-# Phase 3
-@router.post("/threads/{id}/messages")
-def create_message(): stub_response()
-
 # Phase 4
 @router.get("/approvals")
 def get_approvals(): stub_response()

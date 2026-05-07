@@ -1,0 +1,5 @@
+name: "Hello Milo Smoke Test"
+turns:
+  - user: "Hello, who are you?"
+    expected:
+      response_contains: "Milo"

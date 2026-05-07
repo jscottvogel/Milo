@@ -1,12 +1,12 @@
-import json
 from fastapi import Request
-from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
 
 async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     request_id = getattr(request.state, "request_id", "unknown")
-    
+
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -20,7 +20,7 @@ async def custom_http_exception_handler(request: Request, exc: StarletteHTTPExce
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     request_id = getattr(request.state, "request_id", "unknown")
-    
+
     return JSONResponse(
         status_code=422,
         content={
@@ -37,7 +37,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     import traceback
     traceback.print_exc()
     request_id = getattr(request.state, "request_id", "unknown")
-    
+
     return JSONResponse(
         status_code=500,
         content={

@@ -1,0 +1,8 @@
+name: "Multi-turn Dialogue"
+turns:
+  - user: "Hi, my favorite color is blue."
+    expected:
+      response_contains: ""
+  - user: "What is my favorite color?"
+    expected:
+      response_contains: "blue"

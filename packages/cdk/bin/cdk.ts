@@ -8,5 +8,10 @@ import { IdentityStack } from '../lib/identity-stack';
 const app = new cdk.App();
 const mode = app.node.tryGetContext('mode') || 'poc';
 
-new DatabaseStack(app, `MiloDatabaseStack-${mode}`, { mode });
-new IdentityStack(app, `MiloIdentityStack-${mode}`, { mode });
+const env = {
+  account: process.env.CDK_DEFAULT_ACCOUNT,
+  region: process.env.CDK_DEFAULT_REGION,
+};
+
+new DatabaseStack(app, `MiloDatabaseStack-${mode}`, { mode: mode as 'poc' | 'prod', env });
+new IdentityStack(app, `MiloIdentityStack-${mode}`, { mode, env });

@@ -22,7 +22,7 @@ def db_session(tenant_id: str | uuid.UUID) -> Generator[Session, None, None]:
     session = SessionLocal()
     session.info["tenant_id"] = str(tenant_id)
     # The after_begin event will apply the SET LOCAL upon transaction start
-    
+
     try:
         yield session
         session.commit()

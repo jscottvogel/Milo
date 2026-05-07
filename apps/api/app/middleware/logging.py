@@ -2,7 +2,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -23,7 +23,7 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
 
         start_time = time.perf_counter()
-        
+
         try:
             response = await call_next(request)
             status_code = response.status_code

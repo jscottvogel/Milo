@@ -1,6 +1,28 @@
 [project]
 name = "agent"
 version = "0.1.0"
-description = "Milo Agent"
-requires-python = ">=3.12"
-dependencies = []
+description = "Milo Agent Runtime Core"
+requires-python = "==3.12.*"
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain-core>=0.2.0",
+    "boto3>=1.34.0",
+    "pydantic>=2.0.0",
+    "db",
+    "shared-schemas",
+]
+
+[tool.uv.sources]
+db = { workspace = true }
+shared-schemas = { workspace = true }
+
+[tool.setuptools.packages.find]
+include = ["agent*"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-asyncio",
+    "moto"
+]
