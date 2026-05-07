@@ -42,7 +42,7 @@ def test_get_tenant_forbidden():
 
 def test_stubs():
     valid_uuid = str(uuid.uuid4())
-    response = client.get("/v1/programs", headers={"Authorization": f"Bearer dev_{valid_uuid}"})
+    response = client.get("/v1/integrations", headers={"Authorization": f"Bearer dev_{valid_uuid}"})
     assert response.status_code == 501
 
 def test_validation_error():

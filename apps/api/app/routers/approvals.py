@@ -1,11 +1,10 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from agent.approvals import decide_approval
 from db.models.agent import Approval
-from db.session import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from schemas.approvals import ApprovalDecisionRequest, ApprovalResponse
@@ -13,21 +12,21 @@ from schemas.approvals import ApprovalDecisionRequest, ApprovalResponse
 
 router = APIRouter(prefix="/v1/approvals", tags=["approvals"])
 
-# Mock dependencies for tenant/user isolation
-def get_current_tenant_id() -> str:
-    return "00000000-0000-0000-0000-000000000001"  # Replace with real auth
-
-def get_current_user_id() -> str:
-    return "00000000-0000-0000-0000-000000000001"  # Replace with real auth
-
 
 @router.get("", response_model=list[ApprovalResponse])
 def list_approvals(
+    request: Request,
     milo_id: str | None = None,
-    status: str | None = None,
-    db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant_id)
+    status: str | None = None
 ):
+    context = getattr(request.state, "auth_context", None)
+    if not context:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    db = getattr(request.state, "db", None)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database session not found")
+        
+    tenant_id = context.tenant_id
     stmt = select(Approval).where(Approval.tenant_id == uuid.UUID(tenant_id))
     
     if milo_id:
@@ -54,20 +53,27 @@ def list_approvals(
 
 @router.post("/{approval_id}/decide", response_model=ApprovalResponse)
 def decide_on_approval(
+    request: Request,
     approval_id: str,
-    request: ApprovalDecisionRequest,
-    db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant_id),
-    user_id: str = Depends(get_current_user_id)
+    payload: ApprovalDecisionRequest
 ):
+    context = getattr(request.state, "auth_context", None)
+    if not context:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    db = getattr(request.state, "db", None)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database session not found")
+        
+    tenant_id = context.tenant_id
+    user_id = context.sub
     try:
         approval = decide_approval(
             session=db,
             tenant_id=tenant_id,
             approval_id=approval_id,
-            decision=request.decision,
+            decision=payload.decision,
             user_id=user_id,
-            modified_payload=request.modified_payload
+            modified_payload=payload.modified_payload
         )
         
         # After deciding, the frontend should prompt the agent to resume execution

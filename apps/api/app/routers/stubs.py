@@ -5,18 +5,7 @@ router = APIRouter(prefix="/v1", tags=["stubs"])
 def stub_response():
     raise HTTPException(status_code=501, detail="Not Implemented - Scheduled for a future phase")
 
-# Phase 6
-@router.get("/programs")
-def get_programs(): stub_response()
-
-@router.post("/programs")
-def create_program(): stub_response()
-
-# Phase 4 stubs removed
-
-# Phase 5
-@router.patch("/milos/{id}/autonomy")
-def update_autonomy(): stub_response()
+# Phase 4, 5, 6 stubs removed
 
 # Phase 8
 @router.get("/integrations")

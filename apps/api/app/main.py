@@ -11,7 +11,7 @@ from app.middleware.error_handler import (
 )
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.tenant_context import TenantContextMiddleware
-from app.routers import health, stubs, tenants, threads, users, approvals, milos
+from app.routers import health, stubs, tenants, threads, users, approvals, milos, programs
 
 app = FastAPI(
     title="Milo API",
@@ -50,4 +50,5 @@ app.include_router(tenants.router)
 app.include_router(threads.router)
 app.include_router(approvals.router)
 app.include_router(milos.router)
+app.include_router(programs.router)
 app.include_router(stubs.router)

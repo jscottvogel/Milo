@@ -13,7 +13,9 @@ dependencies = [
     "boto3>=1.36.0",
     "db",
     "shared-schemas",
+    "agent",
     "sse-starlette>=3.4.2",
+    "mangum>=0.21.0",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +29,7 @@ dev = [
 [tool.uv.sources]
 db = { workspace = true }
 shared-schemas = { workspace = true }
+agent = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
