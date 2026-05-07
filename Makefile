@@ -46,7 +46,10 @@ format:
 eval:
 	@echo "Eval not yet implemented"
 
-dev: dev-api dev-web
+dev:
+	@echo "Starting full stack..."
+	start cmd /k "make dev-api"
+	start cmd /k "make dev-web"
 
 dev-api:
 	@echo "Starting Dev API..."
@@ -58,4 +61,5 @@ export-openapi:
 	@echo "OpenAPI schema exported."
 
 dev-web:
-	@echo "Dev Web not yet implemented"
+	@echo "Starting Dev Web..."
+	cd apps/web && pnpm run dev
