@@ -1,0 +1,37 @@
+[project]
+name = "milo"
+version = "0.1.0"
+description = "Milo Platform"
+requires-python = ">=3.12,<3.13"
+
+[tool.uv.workspace]
+members = [
+    "apps/api",
+    "packages/agent",
+    "packages/db",
+    "packages/shared-schemas",
+    "services/mcp/_template"
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "C90", "N", "UP", "B", "A", "C4", "PT", "SIM", "PTH"]
+ignore = []
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv"]

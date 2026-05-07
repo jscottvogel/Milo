@@ -1,0 +1,6 @@
+[project]
+name = "mcp-template"
+version = "0.1.0"
+description = "Milo MCP Template"
+requires-python = ">=3.12"
+dependencies = []

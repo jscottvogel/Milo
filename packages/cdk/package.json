@@ -1,0 +1,17 @@
+{
+  "name": "cdk",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "synth": "cdk synth"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.140.0",
+    "constructs": "^10.0.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.140.0",
+    "ts-node": "^10.9.2",
+    "typescript": "5.5.4"
+  }
+}
