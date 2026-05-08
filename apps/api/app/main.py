@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env
+
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -13,7 +16,7 @@ from app.middleware.error_handler import (
 )
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.tenant_context import TenantContextMiddleware
-from app.routers import health, tenants, threads, users, approvals, milos, programs, integrations, billing
+from app.routers import health, tenants, threads, users, approvals, milos, programs, integrations, billing, webhooks
 
 if os.getenv("SENTRY_DSN"):
     sentry_sdk.init(
@@ -62,3 +65,4 @@ app.include_router(milos.router)
 app.include_router(programs.router)
 app.include_router(integrations.router)
 app.include_router(billing.router)
+app.include_router(webhooks.router)

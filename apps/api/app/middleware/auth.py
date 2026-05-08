@@ -36,7 +36,7 @@ class RequestContext(BaseModel):
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Public endpoints that bypass auth
-        if request.url.path in ["/v1/health", "/docs", "/openapi.json"]:
+        if request.url.path in ["/v1/health", "/docs", "/openapi.json"] or request.url.path.startswith("/v1/webhooks"):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization")

@@ -40,6 +40,12 @@ class AgentRunner:
 
     def _load_integration_tokens(self) -> dict[str, str]:
         tokens = {}
+        
+        # Load from environment variables (which should be set via .env)
+        if os.getenv("NYLAS_GRANT_ID"):
+            tokens["nylas_grant_id"] = os.getenv("NYLAS_GRANT_ID")
+        if os.getenv("NYLAS_ORG_ID"):
+            tokens["nylas_org_id"] = os.getenv("NYLAS_ORG_ID")
         try:
             ssm = boto3.client('ssm', region_name='us-east-1')
             param_name = f"/milo/tenants/{self.tenant_id}/integrations/gmail/token"

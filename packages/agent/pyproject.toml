@@ -13,6 +13,9 @@ dependencies = [
     "duckduckgo-search>=8.1.1",
     "httpx>=0.28.1",
     "beautifulsoup4>=4.14.3",
+    "nylas>=6.4.0",
+    "markitdown[all]>=0.1.5",
+    "pypandoc>=1.14",
 ]
 
 [tool.uv.sources]
