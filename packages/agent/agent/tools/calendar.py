@@ -44,7 +44,14 @@ class CalendarReadTool(Tool):
                 }
                 
                 # Fetch calendar events
-                events_response = nylas.events.list(identifier=grant_id, query_params=query_params)[0]
+                try:
+                    events_response = nylas.events.list(identifier=grant_id, query_params=query_params)[0]
+                except TypeError as e:
+                    if "'NoneType' object is not iterable" in str(e):
+                        # Nylas SDK bug: it returns data: null when there are no events on a new account
+                        events_response = []
+                    else:
+                        raise e
                 
                 results = []
                 for event in events_response:
@@ -56,6 +63,8 @@ class CalendarReadTool(Tool):
                     })
                 return CalendarReadOutput(events=results).model_dump()
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 return {"error": f"Nylas API Error: {str(e)}"}
                 
         # FALLBACK: DATABASE MOCK MODE
