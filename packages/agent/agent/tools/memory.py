@@ -57,7 +57,7 @@ class MemoryWriteInput(BaseModel):
     kind: str = Field(description="The kind of memory being written (e.g., 'event', 'decision', 'fact')")
     content: str = Field(description="The detailed content of the memory")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Optional metadata to attach to the memory")
-    program_id: str | None = Field(default=None, description="Optional UUID of the program this memory is associated with")
+    work_item_id: str | None = Field(default=None, description="Optional UUID of the work item this memory is associated with")
 
 
 class MemoryWriteOutput(BaseModel):
@@ -76,9 +76,9 @@ class MemoryWriteTool(Tool):
         content = input_data["content"]
         kind = input_data["kind"]
         metadata = input_data.get("metadata", {})
-        program_id_str = input_data.get("program_id")
+        work_item_id_str = input_data.get("work_item_id")
         
-        program_id = uuid.UUID(program_id_str) if program_id_str else None
+        work_item_id = uuid.UUID(work_item_id_str) if work_item_id_str else None
 
         # 1. Embed content
         bedrock = BedrockClient()
@@ -87,7 +87,7 @@ class MemoryWriteTool(Tool):
         # 2. Insert into DB
         chunk = MemoryChunk(
             tenant_id=uuid.UUID(context.tenant_id),
-            program_id=program_id,
+            work_item_id=work_item_id,
             kind=kind,
             content=content,
             embedding=embedding,

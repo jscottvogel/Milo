@@ -12,8 +12,8 @@ class Thread(TenantBoundBase):
     __tablename__ = "threads"
 
     milo_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("milos.id", ondelete="CASCADE"))
-    program_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("programs.id", ondelete="SET NULL"), nullable=True
+    work_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("work_items.id", ondelete="SET NULL"), nullable=True
     )
     summary: Mapped[str | None] = mapped_column(String, nullable=True)
     summary_token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

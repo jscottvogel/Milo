@@ -1,11 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { MessageSquare, CheckCircle, Package, Blocks, Settings as SettingsIcon } from 'lucide-react';
+import { CheckCircle, Package, Blocks, Settings as SettingsIcon } from 'lucide-react';
 import clsx from 'clsx';
+import { Chat } from '../pages/Chat';
 
 const navItems = [
-  { path: '/', icon: MessageSquare, label: 'Chat' },
-  { path: '/approvals', icon: CheckCircle, label: 'Approvals' },
   { path: '/programs', icon: Package, label: 'Programs' },
+  { path: '/approvals', icon: CheckCircle, label: 'Approvals' },
   { path: '/integrations', icon: Blocks, label: 'Integrations' },
   { path: '/settings', icon: SettingsIcon, label: 'Settings' },
 ];
@@ -63,14 +63,23 @@ export function Layout() {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col relative overflow-hidden bg-gradient-to-br from-background to-[#111115]">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E')] opacity-20 pointer-events-none mix-blend-overlay"></div>
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/10 rounded-full blur-[100px] pointer-events-none"></div>
-        <div className="absolute bottom-10 left-1/4 w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none"></div>
-        
-        <Outlet />
-      </main>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-gradient-to-br from-background to-[#111115]">
+        <main className="flex-1 relative overflow-auto">
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E')] opacity-20 pointer-events-none mix-blend-overlay"></div>
+          <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/10 rounded-full blur-[100px] pointer-events-none"></div>
+          <div className="absolute bottom-10 left-1/4 w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none"></div>
+          
+          <Outlet />
+        </main>
+
+        {/* Persistent Chat Bottom Panel */}
+        <aside className="h-[40vh] min-h-[300px] max-h-[500px] flex-shrink-0 flex flex-col z-20 border-t border-border bg-[#0a0a0c]/90 backdrop-blur-md shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+          <div className="max-w-4xl w-full mx-auto flex-1 h-full flex flex-col relative">
+            <Chat />
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

@@ -58,7 +58,7 @@ class AgentRunner:
                 del schema["$defs"]
             tools.append({
                 "toolSpec": {
-                    "name": t.name,
+                    "name": t.name.replace(".", "__"),
                     "description": t.description,
                     "inputSchema": {
                         "json": schema
@@ -75,7 +75,7 @@ class AgentRunner:
             recent_messages.append(HumanMessage(content=user_message))
             self.thread_memory.save_message("user", user_message)
 
-        program_context = self.program_memory.get_context()
+        program_context = self.program_memory.get_context(milo_id=self.milo_id)
 
         # 2. Build system prompt
         system_prompt = build_system_prompt(
@@ -102,12 +102,12 @@ class AgentRunner:
             loop_count += 1
             
             # Format messages for bedrock
-            formatted_messages = []
+            formatted_messages: list[dict[str, Any]] = []
             for m in recent_messages:
                 if isinstance(m, HumanMessage):
                     formatted_messages.append({"role": "user", "content": [{"text": m.content}]})
                 elif isinstance(m, AIMessage):
-                    content = []
+                    content: list[dict[str, Any]] = []
                     if m.content:
                         content.append({"text": m.content})
                     if hasattr(m, "tool_calls") and m.tool_calls:
@@ -115,24 +115,27 @@ class AgentRunner:
                             content.append({
                                 "toolUse": {
                                     "toolUseId": tc["id"],
-                                    "name": tc["name"],
+                                    "name": tc["name"].replace(".", "__"),
                                     "input": tc["args"]
                                 }
                             })
                     formatted_messages.append({"role": "assistant", "content": content})
                 elif isinstance(m, ToolMessage):
                     # We must pack ToolMessages into a user message with toolResult
-                    # In Langchain bedrock integration, ToolMessages are appended to a user message
-                    # But for Bedrock direct converse API, they go as 'user' role with 'toolResult' block
-                    formatted_messages.append({
-                        "role": "user",
-                        "content": [{
-                            "toolResult": {
-                                "toolUseId": m.tool_call_id,
-                                "content": [{"text": str(m.content)}]
-                            }
-                        }]
-                    })
+                    # If the last message was a 'user' message containing toolResults, append to it
+                    tool_result_block = {
+                        "toolResult": {
+                            "toolUseId": m.tool_call_id,
+                            "content": [{"text": str(m.content)}]
+                        }
+                    }
+                    if formatted_messages and formatted_messages[-1]["role"] == "user" and any("toolResult" in c for c in formatted_messages[-1]["content"]):
+                        formatted_messages[-1]["content"].append(tool_result_block)
+                    else:
+                        formatted_messages.append({
+                            "role": "user",
+                            "content": [tool_result_block]
+                        })
 
             stream = self.llm.invoke_with_streaming(
                 messages=formatted_messages,
@@ -153,7 +156,7 @@ class AgentRunner:
                 elif event["type"] == "tool_use_start":
                     current_tool_call = {
                         "id": event["toolUseId"],
-                        "name": event["name"],
+                        "name": event["name"].replace("__", "."),
                         "args_str": ""
                     }
                     yield event
@@ -161,15 +164,16 @@ class AgentRunner:
                     if current_tool_call:
                         current_tool_call["args_str"] += event["delta"]
                     yield event
-                elif event["type"] == "message_stop":
-                    stop_reason = event.get("stopReason")
+                elif event["type"] == "content_block_stop":
                     if current_tool_call:
                         try:
                             current_tool_call["args"] = json.loads(current_tool_call["args_str"])
                         except Exception:
                             current_tool_call["args"] = {}
                         tool_calls.append(current_tool_call)
-                    
+                        current_tool_call = None
+                elif event["type"] == "message_stop":
+                    stop_reason = event.get("stopReason")
                     yield {"type": "done", "reason": stop_reason}
                 elif event["type"] == "usage":
                     metrics: LLMUsage = event["metrics"]
@@ -239,6 +243,7 @@ class AgentRunner:
                         except Exception as e:
                             logger.error(f"Tool {tool.name} failed: {e}")
                             result_str = f"Error: {e}"
+                            result = {"error": str(e)}
                             
                         tool_msg = ToolMessage(content=result_str, tool_call_id=tc["id"])
                         recent_messages.append(tool_msg)

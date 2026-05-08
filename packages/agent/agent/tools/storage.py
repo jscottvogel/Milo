@@ -8,6 +8,44 @@ from agent.tools.context import AgentContext
 from agent.tools.registry import Tool
 
 
+class StorageListInput(BaseModel):
+    prefix: str = Field(default="", description="The folder prefix to list. Leave empty to list the root directory.")
+
+
+class StorageListOutput(BaseModel):
+    files: list[str] = Field(description="The list of file paths/keys")
+
+
+class StorageListTool(Tool):
+    name = "storage.list"
+    description = "List the files available in a tenant storage directory."
+    input_schema = StorageListInput
+    output_schema = StorageListOutput
+    mutates = False
+    requires_approval = False
+
+    async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
+        bucket = os.environ.get("S3_BUCKET_NAME", "milo-poc-bucket-jsco")
+        prefix = f"{context.tenant_id}/{input_data.get('prefix', '')}"
+        if prefix and not prefix.endswith('/') and input_data.get('prefix') != "":
+            prefix += '/'
+            
+        s3 = boto3.client("s3")
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(None, lambda: s3.list_objects_v2(Bucket=bucket, Prefix=prefix))
+            
+            files = []
+            if 'Contents' in response:
+                for obj in response['Contents']:
+                    if not obj['Key'].endswith('/'):
+                        files.append(obj['Key'].replace(f"{context.tenant_id}/", ""))
+            return StorageListOutput(files=files).model_dump()
+        except Exception as e:
+            return {"error": str(e)}
+
+
 class StorageReadInput(BaseModel):
     path: str = Field(description="The path/key of the file to read")
 
@@ -25,7 +63,7 @@ class StorageReadTool(Tool):
     requires_approval = False
 
     async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
-        bucket = os.environ.get("S3_BUCKET_NAME", "milo-poc-bucket")
+        bucket = os.environ.get("S3_BUCKET_NAME", "milo-poc-bucket-jsco")
         key = f"{context.tenant_id}/{input_data['path']}"
         
         s3 = boto3.client("s3")
@@ -58,7 +96,7 @@ class StorageWriteTool(Tool):
     requires_approval = False # Dynamically updated based on input
 
     async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
-        bucket = os.environ.get("S3_BUCKET_NAME", "milo-poc-bucket")
+        bucket = os.environ.get("S3_BUCKET_NAME", "milo-poc-bucket-jsco")
         key = f"{context.tenant_id}/{input_data['path']}"
         
         if input_data.get("is_shared"):

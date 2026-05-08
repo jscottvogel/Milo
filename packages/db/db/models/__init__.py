@@ -4,7 +4,7 @@ from .billing import InvoicesCache, Subscription, UsageMeter
 from .identity import Membership, Milo, Tenant, User
 from .integrations import Integration, IntegrationEvent, OAuthToken
 from .memory import EmbeddingsJob, MemoryChunk, MemoryFact
-from .program import Commitment, Decision, Milestone, Program, Risk, Stakeholder, Task
+from .program import Commitment, Decision, Risk, Stakeholder, WorkItem, ChangeRequest
 
 __all__ = [
     "Base",
@@ -13,13 +13,12 @@ __all__ = [
     "User",
     "Membership",
     "Milo",
-    "Program",
-    "Milestone",
-    "Task",
+    "WorkItem",
     "Stakeholder",
     "Risk",
     "Decision",
     "Commitment",
+    "ChangeRequest",
     "Thread",
     "Message",
     "ToolCall",

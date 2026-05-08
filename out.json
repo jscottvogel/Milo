@@ -1,0 +1,1 @@
+{"errorMessage": "Unable to import module 'apps.api.lambda_handler': No module named 'mangum'", "errorType": "Runtime.ImportModuleError", "requestId": "", "stackTrace": []}

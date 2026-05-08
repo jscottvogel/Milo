@@ -46,8 +46,8 @@ class BedrockClient:
         )
         self.client = boto3.client("bedrock-runtime", config=self.boto_config)
 
-        self.primary_model_id = os.environ.get("BEDROCK_PRIMARY_MODEL", "anthropic.claude-3-5-sonnet-20241022-v2:0")
-        self.cheap_model_id = os.environ.get("BEDROCK_CHEAP_MODEL", "anthropic.claude-3-5-haiku-20241022-v1:0")
+        self.primary_model_id = os.environ.get("BEDROCK_PRIMARY_MODEL", "us.anthropic.claude-sonnet-4-6")
+        self.cheap_model_id = os.environ.get("BEDROCK_CHEAP_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 
     def _get_model_id(self, model: str) -> str:
         return self.primary_model_id if model == "primary" else self.cheap_model_id
@@ -69,7 +69,7 @@ class BedrockClient:
         """
         model_id = self._get_model_id(model)
 
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "modelId": model_id,
             "messages": messages,
             "system": [{"text": system}],
@@ -102,9 +102,11 @@ class BedrockClient:
                     if 'toolUse' in start:
                         yield {
                             "type": "tool_use_start",
-                            "toolUseId": start['toolUseId'],
-                            "name": start['name']
+                            "toolUseId": start['toolUse']['toolUseId'],
+                            "name": start['toolUse']['name']
                         }
+                elif 'contentBlockStop' in event:
+                    yield {"type": "content_block_stop"}
                 elif 'messageStop' in event:
                     yield {
                         "type": "message_stop",

@@ -35,8 +35,8 @@ export function Chat() {
     setInput('');
     setIsLoading(true);
 
-    // Mock Thread ID for PoC
-    const threadId = 'thread-123';
+    // Mock Thread ID for PoC (Must be a valid UUID)
+    const threadId = '123e4567-e89b-12d3-a456-426614174000';
     
     try {
       const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -107,23 +107,23 @@ export function Chat() {
   };
 
   return (
-    <div className="flex flex-col h-full w-full max-w-4xl mx-auto p-4 z-10 relative">
+    <div className="flex flex-col h-full w-full mx-auto p-4 z-10 relative">
       <div className="flex-1 overflow-y-auto scrollbar-hide py-4 space-y-6 px-2">
         {messages.map((message) => (
           <div 
             key={message.id} 
             className={clsx(
-              "flex gap-4 max-w-[85%] animate-fade-in",
+              "flex gap-3 max-w-[95%] animate-fade-in",
               message.role === 'user' ? "ml-auto flex-row-reverse" : ""
             )}
           >
             <div className={clsx(
-              "flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-lg",
+              "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-lg",
               message.role === 'user' 
                 ? "bg-gradient-to-br from-indigo-500 to-purple-600" 
                 : "bg-surface border border-white/10"
             )}>
-              {message.role === 'user' ? <User size={20} /> : <Bot size={20} className="text-primary" />}
+              {message.role === 'user' ? <User size={16} /> : <Bot size={16} className="text-primary" />}
             </div>
             
             <div className={clsx(

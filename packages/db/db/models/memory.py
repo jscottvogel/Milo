@@ -11,8 +11,8 @@ from .base import TenantBoundBase
 class MemoryChunk(TenantBoundBase):
     __tablename__ = "memory_chunks"
 
-    program_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("programs.id", ondelete="CASCADE"), nullable=True
+    work_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("work_items.id", ondelete="CASCADE"), nullable=True
     )
     kind: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)

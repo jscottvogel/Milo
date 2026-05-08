@@ -43,9 +43,15 @@ class EmailDraftTool(Tool):
         
         integration = context.session.scalar(stmt)
         if not integration:
-            # For testing, we might want to just create a dummy integration or fail
-            # We will create a dummy one if we are in test mode, but for real we should raise
-            raise ValueError("No active email integration found for tenant.")
+            # For the PoC, we will auto-create a dummy gmail integration if none exists
+            integration = Integration(
+                tenant_id=uuid.UUID(context.tenant_id),
+                kind="gmail",
+                credentials_jsonb={},
+                status="active"
+            )
+            context.session.add(integration)
+            context.session.flush()
 
         draft = IntegrationEvent(
             tenant_id=uuid.UUID(context.tenant_id),

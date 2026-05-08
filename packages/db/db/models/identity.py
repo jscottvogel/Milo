@@ -31,6 +31,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     locale: Mapped[str | None] = mapped_column(String, nullable=True)
     tz: Mapped[str | None] = mapped_column(String, nullable=True)
+    preferred_communication: Mapped[str | None] = mapped_column(String, default="email", nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         server_default=func.now()
     )
@@ -60,12 +61,11 @@ class Milo(TenantBoundBase):
 
     name: Mapped[str] = mapped_column(String, nullable=False)
     persona_pack: Mapped[str] = mapped_column(String, nullable=False)
-    program_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("programs.id", ondelete="SET NULL"), nullable=True
+    default_work_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("work_items.id", ondelete="SET NULL"), nullable=True
     )
     autonomy_levels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     __table_args__ = (
         CheckConstraint("persona_pack IN ('trades', 'sme')", name="chk_milo_persona"),
     )
-

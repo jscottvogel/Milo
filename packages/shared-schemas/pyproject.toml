@@ -4,3 +4,6 @@ version = "0.1.0"
 description = "Milo Shared Schemas"
 requires-python = ">=3.12"
 dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["schemas*"]

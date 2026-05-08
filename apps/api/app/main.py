@@ -1,3 +1,5 @@
+import os
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,7 +30,15 @@ app = FastAPI(
     docs_url="/docs",
 )
 
-# CORS
+# Middlewares (order matters: last added is outermost)
+# 3. Tenant Context (innermost, needs auth)
+app.add_middleware(TenantContextMiddleware)
+# 2. Auth (extracts JWT)
+app.add_middleware(AuthMiddleware)
+# 1. Logging
+app.add_middleware(StructuredLoggingMiddleware)
+
+# CORS (Outermost, must intercept OPTIONS before Auth)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # For PoC
@@ -36,14 +46,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Middlewares (order matters: last added is outermost)
-# 3. Tenant Context (innermost, needs auth)
-app.add_middleware(TenantContextMiddleware)
-# 2. Auth (extracts JWT)
-app.add_middleware(AuthMiddleware)
-# 1. Logging (Outermost)
-app.add_middleware(StructuredLoggingMiddleware)
 
 # Exception Handlers
 app.add_exception_handler(StarletteHTTPException, custom_http_exception_handler)

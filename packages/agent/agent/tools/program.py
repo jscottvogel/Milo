@@ -4,100 +4,108 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from db.models.program import Decision, Milestone, Program, Risk, Task
+from db.models.program import Decision, Risk, WorkItem, ChangeRequest, Stakeholder, Commitment
 from agent.tools.context import AgentContext
 from agent.tools.registry import Tool
 
 
-class ProgramReadInput(BaseModel):
-    program_id: str | None = Field(default=None, description="The ID of the program to read. If null, returns all active programs.")
-    include_details: bool = Field(default=False, description="If true, include milestones, tasks, risks, and decisions.")
+class WorkItemReadInput(BaseModel):
+    item_id: str | None = Field(default=None, description="The ID of the work item to read. If null, returns root items.")
+    include_children: bool = Field(default=False, description="If true, include all child work items, risks, decisions, and change_requests.")
 
 
-class ProgramReadOutput(BaseModel):
-    programs: list[dict[str, Any]]
+class WorkItemReadOutput(BaseModel):
+    items: list[dict[str, Any]]
 
 
-class ProgramReadTool(Tool):
-    name = "program.read"
-    description = "Read structured program data including milestones, tasks, risks, and decisions."
-    input_schema = ProgramReadInput
-    output_schema = ProgramReadOutput
+class WorkItemReadTool(Tool):
+    name = "work_item.read"
+    description = "Read structured work item data including the 8-layer hierarchy, risks, decisions, and change requests."
+    input_schema = WorkItemReadInput
+    output_schema = WorkItemReadOutput
     mutates = False
     requires_approval = False
 
     async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
-        program_id_str = input_data.get("program_id")
-        include_details = input_data.get("include_details", False)
+        item_id_str = input_data.get("item_id")
+        include_children = input_data.get("include_children", False)
 
-        stmt = select(Program).where(Program.tenant_id == uuid.UUID(context.tenant_id))
+        stmt = select(WorkItem).where(WorkItem.tenant_id == uuid.UUID(context.tenant_id))
         
-        if program_id_str:
-            stmt = stmt.where(Program.id == uuid.UUID(program_id_str))
+        if item_id_str:
+            stmt = stmt.where(WorkItem.id == uuid.UUID(item_id_str))
+        else:
+            stmt = stmt.where(WorkItem.parent_id == None)
             
-        programs = context.session.scalars(stmt).all()
+        items = context.session.scalars(stmt).all()
 
         results = []
-        for p in programs:
+        for w in items:
             data = {
-                "id": str(p.id),
-                "name": p.name,
-                "status": p.status,
-                "charter": p.charter,
-                "success_criteria": p.success_criteria
+                "id": str(w.id),
+                "name": w.name,
+                "item_type": w.item_type,
+                "status": w.status,
+                "description": w.description
             }
-            if include_details:
-                # Load milestones
-                m_stmt = select(Milestone).where(Milestone.program_id == p.id)
-                data["milestones"] = [{"id": str(m.id), "name": m.name, "status": m.status} for m in context.session.scalars(m_stmt).all()]
-                
-                # Load tasks
-                t_stmt = select(Task).where(Task.program_id == p.id)
-                data["tasks"] = [{"id": str(t.id), "title": t.title, "status": t.status} for t in context.session.scalars(t_stmt).all()]
+            if include_children:
+                # Fetch children
+                c_stmt = select(WorkItem).where(WorkItem.parent_id == w.id)
+                data["children"] = [{"id": str(c.id), "name": c.name, "item_type": c.item_type, "status": c.status} for c in context.session.scalars(c_stmt).all()]
 
                 # Load risks
-                r_stmt = select(Risk).where(Risk.program_id == p.id)
+                r_stmt = select(Risk).where(Risk.work_item_id == w.id)
                 data["risks"] = [{"id": str(r.id), "title": r.title, "status": r.status, "likelihood": r.likelihood, "impact": r.impact} for r in context.session.scalars(r_stmt).all()]
+
+                # Load change requests
+                cr_stmt = select(ChangeRequest).where(ChangeRequest.work_item_id == w.id)
+                data["change_requests"] = [{"id": str(cr.id), "title": cr.title, "status": cr.status, "reason": cr.reason, "impact_analysis": cr.impact_analysis} for cr in context.session.scalars(cr_stmt).all()]
+
+                # Load decisions
+                d_stmt = select(Decision).where(Decision.work_item_id == w.id)
+                data["decisions"] = [{"id": str(d.id), "title": d.title, "decision_text": d.decision_text, "alternatives_jsonb": d.alternatives_jsonb, "source_link": d.source_link} for d in context.session.scalars(d_stmt).all()]
+
+                # Load stakeholders
+                sh_stmt = select(Stakeholder).where(Stakeholder.work_item_id == w.id)
+                data["stakeholders"] = [{"id": str(sh.id), "name": sh.name, "email": sh.email, "role": sh.role, "influence": sh.influence, "interest": sh.interest, "satisfaction": sh.satisfaction, "notes": sh.notes} for sh in context.session.scalars(sh_stmt).all()]
+
+                # Load action items (commitments)
+                ci_stmt = select(Commitment).where(Commitment.work_item_id == w.id)
+                data["action_items"] = [{"id": str(ci.id), "description": ci.description, "owner_name": ci.owner_name, "due_date": ci.due_date.isoformat() if ci.due_date else None, "status": ci.status} for ci in context.session.scalars(ci_stmt).all()]
 
             results.append(data)
 
-        return ProgramReadOutput(programs=results).model_dump()
+        return WorkItemReadOutput(items=results).model_dump()
 
 
-class ProgramUpdateInput(BaseModel):
-    entity_type: Literal["program", "milestone", "task", "risk", "decision"] = Field(description="The type of entity to update")
+class WorkItemUpdateInput(BaseModel):
+    entity_type: Literal["objective", "outcome", "key_result", "initiative", "project", "workstream", "milestone", "task", "risk", "decision", "change_request", "stakeholder", "action_item"] = Field(description="The type of entity to update")
     entity_id: str | None = Field(default=None, description="The ID of the entity to update. If null, a new entity is created.")
-    program_id: str | None = Field(default=None, description="The ID of the program (required for creating child entities).")
-    payload: dict[str, Any] = Field(description="The fields to update or create")
+    parent_id: str | None = Field(default=None, description="The ID of the parent work item (required for creating child entities).")
+    payload: dict[str, Any] = Field(description="The fields to update or create. For work items: name, description, status, start_date (ISO), due_date (ISO), owner_name, metadata_json (use this to store financial time-series data using key 'financials' containing an array of objects like {\"period\": \"YYYY-MM\", \"budget\": 100, \"actual\": 50}), dependencies (list of strings representing names of entities this depends on). For risk: title, likelihood (int 1-5), impact (int 1-5), status, mitigation. For change_request: title, description, reason, status, impact_analysis. For decision: title, decision_text, alternatives_jsonb (dict), source_link. For stakeholder: name, role (use 'sponsor' if applicable), email, influence, interest, notes, satisfaction. For action_item: description, owner_name, due_date (ISO), status (pending/met/missed).")
 
 
-class ProgramUpdateOutput(BaseModel):
+class WorkItemUpdateOutput(BaseModel):
     id: str = Field(description="The ID of the updated or created entity")
 
 
-class ProgramUpdateTool(Tool):
-    name = "program.update"
-    description = "Update or create program, milestone, task, risk, or decision entities."
-    input_schema = ProgramUpdateInput
-    output_schema = ProgramUpdateOutput
+class WorkItemUpdateTool(Tool):
+    name = "work_item.update"
+    description = "Update or create objectives, outcomes, key_results, initiatives, projects, workstreams, milestones, tasks, risks, decisions, or change_requests."
+    input_schema = WorkItemUpdateInput
+    output_schema = WorkItemUpdateOutput
     mutates = True
-    requires_approval = False # Dynamic gating can be added at the runner layer for financial fields
+    requires_approval = False
 
     async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
         entity_type = input_data["entity_type"]
         entity_id_str = input_data.get("entity_id")
-        program_id_str = input_data.get("program_id")
+        parent_id_str = input_data.get("parent_id")
         payload = input_data["payload"]
-
-        entity_class_map = {
-            "program": Program,
-            "milestone": Milestone,
-            "task": Task,
-            "risk": Risk,
-            "decision": Decision
-        }
         
-        EntityClass = entity_class_map[entity_type]
+        is_work_item = entity_type not in ["risk", "decision", "change_request", "stakeholder", "action_item"]
+
+        EntityClass = WorkItem if is_work_item else (Risk if entity_type == "risk" else (Decision if entity_type == "decision" else (ChangeRequest if entity_type == "change_request" else (Stakeholder if entity_type == "stakeholder" else Commitment))))
         entity = None
         
         if entity_id_str:
@@ -106,17 +114,36 @@ class ProgramUpdateTool(Tool):
                 raise ValueError(f"{entity_type} with ID {entity_id_str} not found.")
         else:
             entity = EntityClass(tenant_id=uuid.UUID(context.tenant_id))
-            if entity_type != "program":
-                if not program_id_str:
-                    raise ValueError("program_id is required when creating a child entity.")
-                entity.program_id = uuid.UUID(program_id_str)
+            if is_work_item:
+                entity.item_type = entity_type
+                if parent_id_str:
+                    entity.parent_id = uuid.UUID(parent_id_str)
+            else:
+                if not parent_id_str:
+                    raise ValueError(f"parent_id (work_item_id) is required when creating a {entity_type}.")
+                entity.work_item_id = uuid.UUID(parent_id_str)
             context.session.add(entity)
 
-        # Update fields
+        # Handle date parsing and dependencies
         for key, value in payload.items():
-            if hasattr(entity, key):
+            if key in ["start_date", "target_date", "due_date", "actual_date"] and value:
+                from dateutil import parser
+                try:
+                    parsed_date = parser.parse(value)
+                    setattr(entity, key, parsed_date.replace(tzinfo=None))
+                except Exception:
+                    pass
+            elif key == "dependencies" and isinstance(value, list) and parent_id_str:
+                dep_ids = []
+                for dep_name in value:
+                    if not isinstance(dep_name, str): continue
+                    dep = context.session.scalar(select(WorkItem).where(WorkItem.parent_id == uuid.UUID(parent_id_str), WorkItem.name == dep_name))
+                    if dep:
+                        dep_ids.append(str(dep.id))
+                setattr(entity, key, dep_ids)
+            elif hasattr(entity, key):
                 setattr(entity, key, value)
 
         context.session.commit()
 
-        return ProgramUpdateOutput(id=str(entity.id)).model_dump()
+        return WorkItemUpdateOutput(id=str(entity.id)).model_dump()
