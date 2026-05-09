@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Send, Bot, User, Loader2, Paperclip, X } from 'lucide-react';
 import clsx from 'clsx';
 import { HydrationPanel } from '../components/HydrationPanel';
+import { apiFetch, getToken } from '../api/client';
 
 interface Message {
   id: string;
@@ -49,22 +50,14 @@ export function Chat() {
     let finalContent = input.trim();
     let uploadedPaths: string[] = [];
 
-    const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    const API_URL = RAW_API_URL.endsWith('/') ? RAW_API_URL.slice(0, -1) : RAW_API_URL;
-
     try {
       if (selectedFiles.length > 0) {
         // Duplicate detection
         for (const file of selectedFiles) {
-          const checkRes = await fetch(`${API_URL}/v1/files/check-duplicate`, {
+          const checkData = await apiFetch<any>('/v1/files/check-duplicate', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
-            },
             body: JSON.stringify({ filename: file.name })
           });
-          const checkData = await checkRes.json();
           if (checkData.exists) {
             if (!window.confirm(`The file "${file.name}" has already been uploaded. Overwrite and re-ingest?`)) {
               setIsLoading(false);
@@ -77,19 +70,11 @@ export function Chat() {
         const formData = new FormData();
         selectedFiles.forEach(file => formData.append('files', file));
 
-        const uploadRes = await fetch(`${API_URL}/v1/files/upload`, {
+        const uploadData = await apiFetch<any>('/v1/files/upload', {
           method: 'POST',
-          headers: {
-            'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
-          },
           body: formData
         });
 
-        if (!uploadRes.ok) {
-          throw new Error('Upload failed');
-        }
-
-        const uploadData = await uploadRes.json();
         uploadedPaths = uploadData.paths || [];
 
         const systemPrompt = `\n\n[SYSTEM] I have uploaded the following files: ${uploadedPaths.join(", ")}. Please parse them via file.read, extract document type, key facts, decisions, architecture components, and prompts, write them to memory, and give me a summary of what you extracted.`;
@@ -116,7 +101,7 @@ export function Chat() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
+          'Authorization': `Bearer ${getToken()}`
         },
         body: JSON.stringify({ content: userMessage.content })
       });
@@ -151,6 +136,24 @@ export function Chat() {
                  setMessages(prev => prev.map(msg => 
                   msg.id === assistantMessageId 
                     ? { ...msg, content: msg.content + `\n\n> ⚡ Using tool: \`${data.tool_name}\`\n\n` }
+                    : msg
+                ));
+              } else if (data.type === 'approval_request') {
+                 setMessages(prev => prev.map(msg => 
+                  msg.id === assistantMessageId 
+                    ? { ...msg, content: msg.content + `\n\n> 🛡️ **Approval Required:** Please go to the [Approvals](/approvals) tab to approve the \`${data.tool_name}\` action.\n\n` }
+                    : msg
+                ));
+              } else if (data.type === 'error') {
+                 setMessages(prev => prev.map(msg => 
+                  msg.id === assistantMessageId 
+                    ? { ...msg, content: msg.content + `\n\n> ❌ **Error:** ${data.message}\n\n` }
+                    : msg
+                ));
+              } else if (data.type === 'tool_result') {
+                 setMessages(prev => prev.map(msg => 
+                  msg.id === assistantMessageId 
+                    ? { ...msg, content: msg.content + `\n\n> ✅ **Tool \`${data.tool_name}\` Complete**\n\n` }
                     : msg
                 ));
               }

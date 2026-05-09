@@ -76,7 +76,7 @@ class DeveloperHandoffTool(Tool):
         assignee = context.integration_tokens.get("github_default_assignee")
         
         try:
-            mcp_url = "http://localhost:8000/services/mcp/github/create_issue"
+            mcp_url = "http://localhost:8001/services/mcp/github/create_issue"
             payload = {
                 "repo": repo,
                 "title": title,
@@ -88,7 +88,8 @@ class DeveloperHandoffTool(Tool):
                 
             # Fire and forget or await the HTTP call to the MCP server
             async with httpx.AsyncClient() as client:
-                resp = await client.post(mcp_url, json=payload, timeout=10.0)
+                headers = {"Authorization": f"Bearer dev_{context.tenant_id}"}
+                resp = await client.post(mcp_url, json=payload, headers=headers, timeout=10.0)
                 if resp.status_code not in (200, 201):
                     import logging
                     logging.getLogger(__name__).error(f"Failed to create GitHub issue: {resp.text}")

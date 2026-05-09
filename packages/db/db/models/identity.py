@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, String
+from sqlalchemy import CheckConstraint, ForeignKey, String, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -65,6 +65,8 @@ class Milo(TenantBoundBase):
         ForeignKey("work_items.id", ondelete="SET NULL"), nullable=True
     )
     autonomy_levels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    briefing_send_time: Mapped[str] = mapped_column(String, nullable=False, default="07:00", server_default="07:00")
+    briefing_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
     __table_args__ = (
         CheckConstraint("persona_pack IN ('trades', 'sme')", name="chk_milo_persona"),

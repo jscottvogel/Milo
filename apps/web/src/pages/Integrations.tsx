@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Blocks, Mail, Plus, Check } from 'lucide-react';
 import { generateCodeVerifier, generateCodeChallenge } from '../utils/oauth';
+import { apiFetch } from '../api/client';
 
 // Mock Config
 const GOOGLE_CLIENT_ID = 'mock-client-id.apps.googleusercontent.com';
@@ -13,11 +14,7 @@ export function Integrations() {
 
   useEffect(() => {
     // Fetch current integrations status
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    fetch(`${API_URL}/v1/integrations`, {
-      headers: { 'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001' }
-    })
-      .then(res => res.json())
+    apiFetch<any[]>('/v1/integrations')
       .then(data => {
         setIsConnected(data.some((i: any) => i.provider === 'gmail' && i.status === 'connected'));
       })

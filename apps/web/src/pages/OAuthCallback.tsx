@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { apiFetch } from '../api/client';
 
 export function OAuthCallback() {
   const [searchParams] = useSearchParams();
@@ -18,27 +19,17 @@ export function OAuthCallback() {
       return;
     }
 
-    // In a real environment, missing verifier is an error. 
     // We mocked the redirect for the PoC, so verifier might be present if they clicked the button.
     
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    fetch(`${API_URL}/v1/integrations/oauth/callback`, {
+    apiFetch('/v1/integrations/oauth/callback', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
-      },
       body: JSON.stringify({
         code,
         code_verifier: verifier || 'mock_verifier',
         provider: 'gmail'
       })
     })
-    .then(async res => {
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || 'Failed to exchange token');
-      }
+    .then(() => {
       setStatus('success');
       setTimeout(() => navigate('/integrations'), 2000);
     })

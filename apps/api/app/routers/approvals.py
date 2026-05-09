@@ -72,7 +72,7 @@ def decide_on_approval(
             tenant_id=tenant_id,
             approval_id=approval_id,
             decision=payload.decision,
-            user_id=user_id,
+            user_id=None if user_id == "dev-user" else user_id,
             modified_payload=payload.modified_payload
         )
         

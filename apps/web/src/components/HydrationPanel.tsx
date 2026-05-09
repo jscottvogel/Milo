@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, XCircle, RefreshCw, AlertCircle, Play } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, RefreshCw, Play } from 'lucide-react';
 import clsx from 'clsx';
 
 interface EntityStatus {

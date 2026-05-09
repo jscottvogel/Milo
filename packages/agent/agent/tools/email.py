@@ -15,7 +15,9 @@ class EmailSendInput(BaseModel):
 
 
 class EmailSendOutput(BaseModel):
-    message_id: str = Field(description="The ID of the sent email or persisted draft row")
+    status: str = Field(description="Status of the email delivery (e.g. 'sent')")
+    message_id: str = Field(description="The internal DB ID of the sent email or persisted draft row")
+    nylas_message_id: str | None = Field(default=None, description="The confirmation ID from Nylas confirming actual dispatch")
 
 
 class EmailSendTool(Tool):
@@ -70,6 +72,7 @@ class EmailSendTool(Tool):
                     identifier=grant_id,
                     request_body={
                         "to": [{"email": input_data["to"]}],
+                        "from_": [{"name": "Milo", "email": os.environ.get("NYLAS_EMAIL", "info@scott-s-organization.nylas.email")}],
                         "reply_to": [{"name": "Milo", "email": os.environ.get("NYLAS_EMAIL", "info@scott-s-organization.nylas.email")}],
                         "subject": input_data["subject"],
                         "body": input_data["body"]
@@ -99,13 +102,20 @@ class EmailSendTool(Tool):
         context.session.add(draft)
         context.session.commit()
 
-        return EmailSendOutput(message_id=str(draft.id)).model_dump()
+        if kind == "email_draft":
+            return {"message": "Email saved as draft because Nylas credentials (NYLAS_API_KEY or nylas_grant_id) are missing. It was NOT sent.", "draft_id": str(draft.id)}
+        return EmailSendOutput(
+            status="sent",
+            message_id=str(draft.id),
+            nylas_message_id=nylas_message_id
+        ).model_dump()
 
 
 class EmailReadInput(BaseModel):
     query: str = Field(default="UNSEEN", description="IMAP search query (e.g. UNSEEN, FROM sender@example.com). Defaults to UNSEEN.")
     limit: int = Field(default=10, description="Maximum number of emails to return")
     mark_read: bool = Field(default=False, description="Whether to mark the fetched emails as read")
+    folder: str = Field(default="INBOX", description="The folder/mailbox to query (e.g. INBOX, Sent, [Gmail]/Sent Mail)")
 
 
 class EmailReadOutput(BaseModel):
@@ -124,6 +134,7 @@ class EmailReadTool(Tool):
         query = input_data.get("query", "UNSEEN")
         limit = min(input_data.get("limit", 10), 50)
         mark_read = input_data.get("mark_read", False)
+        folder = input_data.get("folder", "INBOX")
         
         # Check for Nylas credentials
         import os
@@ -141,10 +152,12 @@ class EmailReadTool(Tool):
             nylas = Client(nylas_api_key)
             
             try:
-                from nylas.models.messages import ListMessagesQueryParams
-                query_params: ListMessagesQueryParams = {"limit": limit}
+                from typing import cast, Any
+                query_params = cast(Any, {"limit": limit})
                 if "UNSEEN" in query:
                     query_params["unread"] = True
+                if folder.lower() != "inbox":
+                    query_params["in"] = folder
                 
                 response = nylas.messages.list(identifier=grant_id, query_params=query_params)
                 messages = response[0]
@@ -177,7 +190,7 @@ class EmailReadTool(Tool):
                 imap_server = "imap.mail.yahoo.com" if "yahoo.com" in email_user else "imap.gmail.com"
                 mail = imaplib.IMAP4_SSL(imap_server)
                 mail.login(email_user, email_password)
-                mail.select("inbox")
+                mail.select(f'"{folder}"')
                 
                 status, messages = mail.search(None, query)
                 if status == "OK":
@@ -214,14 +227,15 @@ class EmailReadTool(Tool):
                                 if isinstance(body, bytes):
                                     body = body.decode()
                                 
+                            body_str = str(body) if body else ""
                             emails.append({
-                                "id": str(msg.get("Message-ID", "")),
-                                "from": str(msg.get("From", "")),
-                                "to": str(msg.get("To", "")),
+                                "id": msg.get("Message-ID", ""),
+                                "from": msg.get("From", ""),
+                                "to": msg.get("To", ""),
                                 "subject": subject,
-                                "body": body[:2000] if body else "", # truncate long emails
-                                "timestamp": str(msg.get("Date", "")),
-                                "thread_id": str(msg.get("In-Reply-To", msg.get("Message-ID", ""))),
+                                "body": body_str[:2000], # truncate long emails
+                                "timestamp": msg.get("Date", ""),
+                                "thread_id": msg.get("In-Reply-To", msg.get("Message-ID", "")),
                                 "read_status": "read" if mark_read else "unread"
                             })
                         
@@ -236,11 +250,17 @@ class EmailReadTool(Tool):
             # DATABASE MOCK MODE
             from sqlalchemy import select
             
-            stmt = select(IntegrationEvent).where(
-                IntegrationEvent.tenant_id == uuid.UUID(context.tenant_id),
-                IntegrationEvent.kind == "email_received",
-                IntegrationEvent.status == "pending"
-            ).limit(limit)
+            if folder.lower() == "inbox":
+                stmt = select(IntegrationEvent).where(
+                    IntegrationEvent.tenant_id == uuid.UUID(context.tenant_id),
+                    IntegrationEvent.kind == "email_received",
+                    IntegrationEvent.status == "pending"
+                ).order_by(IntegrationEvent.created_at.desc()).limit(limit)
+            else:
+                stmt = select(IntegrationEvent).where(
+                    IntegrationEvent.tenant_id == uuid.UUID(context.tenant_id),
+                    IntegrationEvent.kind == "email_sent"
+                ).order_by(IntegrationEvent.created_at.desc()).limit(limit)
             
             events = context.session.scalars(stmt).all()
             for event in events:

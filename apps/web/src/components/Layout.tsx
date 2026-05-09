@@ -1,35 +1,63 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import { CheckCircle, Package, Blocks, Settings as SettingsIcon } from 'lucide-react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { 
+  Home, 
+  MessageSquare, 
+  Package, 
+  CheckCircle, 
+  Inbox, 
+  Settings as SettingsIcon,
+  Search,
+  Bell
+} from 'lucide-react';
 import clsx from 'clsx';
-import { Chat } from '../pages/Chat';
+import { useAppStore } from '../store/useAppStore';
+import { RightRailChat } from './RightRailChat';
+import { GlobalSearch } from './GlobalSearch';
 
 const navItems = [
+  { path: '/home', icon: Home, label: 'Home' },
+  { path: '/chat', icon: MessageSquare, label: 'Chat' },
   { path: '/programs', icon: Package, label: 'Programs' },
-  { path: '/approvals', icon: CheckCircle, label: 'Approvals' },
-  { path: '/integrations', icon: Blocks, label: 'Integrations' },
+  { path: '/approvals', icon: CheckCircle, label: 'Approvals', badge: true },
+  { path: '/inbox', icon: Inbox, label: 'Inbox' },
   { path: '/settings', icon: SettingsIcon, label: 'Settings' },
 ];
 
 export function Layout() {
+  const { pendingApprovalsCount, breadcrumbContext, setSearchOpen } = useAppStore();
+  const location = useLocation();
+
+  // Basic breadcrumb fallback based on route if store is empty
+  const defaultBreadcrumb = location.pathname.split('/').filter(Boolean).map(segment => ({
+    label: segment.charAt(0).toUpperCase() + segment.slice(1),
+    path: `/${segment}`
+  }));
+
+  const breadcrumbs = breadcrumbContext.length > 0 ? breadcrumbContext : defaultBreadcrumb;
+
   return (
-    <div className="flex h-screen bg-background text-white overflow-hidden">
+    <div className="flex h-screen bg-background text-white overflow-hidden font-sans">
+      <GlobalSearch />
+      
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 glass flex flex-col z-10 border-r border-border">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-400">
+      <aside className="w-16 sm:w-64 flex-shrink-0 flex flex-col z-20 border-r border-border bg-[#0f0f13]">
+        <div className="p-4 sm:p-6 h-16 flex items-center border-b border-border/50">
+          <h1 className="text-xl sm:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-400 hidden sm:block">
             Milo
           </h1>
-          <p className="text-xs text-muted-foreground mt-1 tracking-wider uppercase">Agent Workspace</p>
+          <div className="sm:hidden w-8 h-8 rounded bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center font-bold">
+            M
+          </div>
         </div>
         
-        <nav className="flex-1 px-4 space-y-2 mt-4">
+        <nav className="flex-1 px-2 sm:px-4 py-6 space-y-1 sm:space-y-2">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
                 clsx(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative',
+                  'flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group relative',
                   isActive
                     ? 'bg-primary/10 text-primary font-medium'
                     : 'text-muted-foreground hover:bg-white/5 hover:text-white'
@@ -41,45 +69,82 @@ export function Layout() {
                   {isActive && (
                     <div className="absolute left-0 w-1 h-5 bg-primary rounded-r-full shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
                   )}
-                  <item.icon className={clsx("w-5 h-5", isActive ? "text-primary" : "group-hover:text-white")} />
-                  {item.label}
+                  <div className="relative">
+                    <item.icon className={clsx("w-5 h-5", isActive ? "text-primary" : "group-hover:text-white")} />
+                    {item.badge && pendingApprovalsCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-[#0f0f13]">
+                        {pendingApprovalsCount}
+                      </span>
+                    )}
+                  </div>
+                  <span className="hidden sm:block">{item.label}</span>
                 </>
               )}
             </NavLink>
           ))}
         </nav>
-        
-        {/* User profile mock */}
-        <div className="p-4 border-t border-border/50">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-sm shadow-lg">
-              JS
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">Dev User</p>
-              <p className="text-xs text-muted-foreground truncate">Admin</p>
-            </div>
-          </div>
-        </div>
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col relative overflow-hidden bg-gradient-to-br from-background to-[#111115]">
-        <main className="flex-1 relative overflow-auto">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E')] opacity-20 pointer-events-none mix-blend-overlay"></div>
-          <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/10 rounded-full blur-[100px] pointer-events-none"></div>
-          <div className="absolute bottom-10 left-1/4 w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none"></div>
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-gradient-to-br from-[#0a0a0c] to-[#111115]">
+        
+        {/* Top Bar */}
+        <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 border-b border-border bg-[#0a0a0c]/80 backdrop-blur-md z-10">
           
-          <Outlet />
-        </main>
-
-        {/* Persistent Chat Bottom Panel */}
-        <aside className="h-[40vh] min-h-[300px] max-h-[500px] flex-shrink-0 flex flex-col z-20 border-t border-border bg-[#0a0a0c]/90 backdrop-blur-md shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-          <div className="max-w-4xl w-full mx-auto flex-1 h-full flex flex-col relative">
-            <Chat />
+          {/* Breadcrumbs */}
+          <div className="flex items-center gap-2 text-sm">
+            {breadcrumbs.map((crumb, index) => (
+              <div key={crumb.path} className="flex items-center gap-2">
+                {index > 0 && <span className="text-muted-foreground/50">/</span>}
+                <span className={clsx(
+                  "truncate max-w-[150px] sm:max-w-[300px]",
+                  index === breadcrumbs.length - 1 ? "text-white font-medium" : "text-muted-foreground hover:text-white cursor-pointer transition-colors"
+                )}>
+                  {crumb.label}
+                </span>
+              </div>
+            ))}
+            {breadcrumbs.length === 0 && <span className="text-white font-medium">Dashboard</span>}
           </div>
-        </aside>
+
+          {/* Right Actions */}
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setSearchOpen(true)}
+              className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md transition-colors border border-white/5"
+            >
+              <Search className="w-4 h-4" />
+              <span>Search...</span>
+              <kbd className="ml-4 text-[10px] bg-black/30 px-1.5 py-0.5 rounded border border-white/10">⌘K</kbd>
+            </button>
+            <button className="sm:hidden p-2 text-muted-foreground hover:text-white">
+              <Search className="w-5 h-5" />
+            </button>
+            
+            <button className="relative p-2 text-muted-foreground hover:text-white transition-colors rounded-full hover:bg-white/5">
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-1.5 right-2 w-2 h-2 bg-primary rounded-full" />
+            </button>
+            
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-sm shadow-lg border border-white/10 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
+              JS
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <main className="flex-1 relative overflow-auto pb-24 sm:pb-0">
+          {/* Background noise and glows */}
+          <div className="fixed inset-0 bg-[url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E')] opacity-[0.03] pointer-events-none mix-blend-overlay"></div>
+          
+          <div className="relative z-10 w-full h-full">
+            <Outlet />
+          </div>
+        </main>
       </div>
+
+      {/* Right Rail Chat Overlay */}
+      <RightRailChat />
     </div>
   );
 }

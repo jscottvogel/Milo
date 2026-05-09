@@ -49,7 +49,7 @@ def decide_approval(
     tenant_id: str,
     approval_id: str,
     decision: str,
-    user_id: str,
+    user_id: str | None = None,
     modified_payload: dict[str, Any] | None = None
 ) -> Approval:
     """Decide on an approval (approved, rejected)."""
@@ -64,7 +64,7 @@ def decide_approval(
         raise ValueError("Decision must be 'approved' or 'rejected'")
         
     approval.status = decision
-    approval.decided_by = uuid.UUID(user_id)
+    approval.decided_by = uuid.UUID(user_id) if user_id else None
     approval.decided_at = datetime.datetime.now(datetime.UTC)
     
     if modified_payload and decision == "approved":

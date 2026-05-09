@@ -261,7 +261,7 @@ export function ProgramDetails() {
                         <Tooltip 
                           contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '8px', color: '#fff' }}
                           itemStyle={{ color: '#fff' }}
-                          formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
+                          formatter={(value: any) => [`$${Number(value).toLocaleString()}`, '']}
                         />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                         <Bar dataKey="budget" name="Budget" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
