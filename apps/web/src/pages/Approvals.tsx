@@ -11,7 +11,7 @@ interface Approval {
   options?: string[];
 }
 
-export const ApprovalsQueue: React.FC = () => {
+export const Approvals: React.FC = () => {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedApproval, setSelectedApproval] = useState<Approval | null>(null);
@@ -172,4 +172,4 @@ export const ApprovalsQueue: React.FC = () => {
   );
 };
 
-export default ApprovalsQueue;
+export default Approvals;
