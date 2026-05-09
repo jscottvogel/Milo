@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+export type UserRole = 'Executive' | 'PM' | 'Engineer' | 'Finance' | 'Stakeholder' | 'Admin';
+
 interface AppState {
   // Navigation State
   isRightRailOpen: boolean;
@@ -19,6 +21,10 @@ interface AppState {
   isSearchOpen: boolean;
   toggleSearch: () => void;
   setSearchOpen: (open: boolean) => void;
+
+  // Role Context
+  userRole: UserRole;
+  setUserRole: (role: UserRole) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -40,4 +46,8 @@ export const useAppStore = create<AppState>((set) => ({
   isSearchOpen: false,
   toggleSearch: () => set((state) => ({ isSearchOpen: !state.isSearchOpen })),
   setSearchOpen: (open) => set({ isSearchOpen: open }),
+
+  // Role Context
+  userRole: 'Executive', // Default for demonstration
+  setUserRole: (role) => set({ userRole: role })
 }));

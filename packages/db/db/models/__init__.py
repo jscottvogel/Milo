@@ -1,10 +1,10 @@
 from .agent import AgentRun, Approval, Message, Thread, ToolCall
 from .base import Base, TenantBoundBase
 from .billing import InvoicesCache, Subscription, UsageMeter
-from .identity import Membership, Milo, Tenant, User
+from .identity import Membership, Milo, Tenant, User, StakeholderProfile
 from .integrations import Integration, IntegrationEvent, OAuthToken
 from .memory import EmbeddingsJob, MemoryChunk, MemoryFact
-from .program import Commitment, Decision, Risk, Stakeholder, WorkItem, ChangeRequest
+from .program import Commitment, Decision, Risk, ProgramStakeholder, WorkItem, ChangeRequest
 
 __all__ = [
     "Base",
@@ -14,7 +14,8 @@ __all__ = [
     "Membership",
     "Milo",
     "WorkItem",
-    "Stakeholder",
+    "StakeholderProfile",
+    "ProgramStakeholder",
     "Risk",
     "Decision",
     "Commitment",

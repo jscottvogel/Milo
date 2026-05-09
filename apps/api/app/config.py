@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     COGNITO_USER_POOL_ID: str = ""
     COGNITO_CLIENT_ID: str = ""
+    STAKEHOLDER_USER_POOL_ID: str = ""
 
     # App
     LOG_LEVEL: str = "INFO"

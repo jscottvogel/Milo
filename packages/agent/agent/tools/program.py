@@ -82,7 +82,7 @@ class WorkItemUpdateInput(BaseModel):
     entity_type: Literal["objective", "outcome", "key_result", "initiative", "project", "workstream", "milestone", "task", "risk", "decision", "change_request", "stakeholder", "action_item"] = Field(description="The type of entity to update")
     entity_id: str | None = Field(default=None, description="The ID of the entity to update. If null, a new entity is created.")
     parent_id: str | None = Field(default=None, description="The ID of the parent work item (required for creating child entities).")
-    payload: dict[str, Any] = Field(description="The fields to update or create. For work items: name, description, status, start_date (ISO), due_date (ISO), owner_name, metadata_json (use this to store financial time-series data using key 'financials' containing an array of objects like {\"period\": \"YYYY-MM\", \"budget\": 100, \"actual\": 50}), dependencies (list of strings representing names of entities this depends on). For risk: title, likelihood (int 1-5), impact (int 1-5), status, mitigation. For change_request: title, description, reason, status, impact_analysis. For decision: title, decision_text, alternatives_jsonb (dict), source_link. For stakeholder: name, role (use 'sponsor' if applicable), email, influence, interest, notes, satisfaction. For action_item: description, owner_name, due_date (ISO), status (pending/met/missed).")
+    payload: dict[str, Any] = Field(description="The fields to update or create. For work items: name, description, status, start_date (ISO), due_date (ISO), owner_name, metadata_json (use this to store financial time-series data using key 'financials' containing an array of objects like {\"period\": \"YYYY-MM\", \"budget\": 100, \"actual\": 50}), dependencies (list of strings representing names of entities this depends on). For risk: title, likelihood (int 1-5), impact (int 1-5), status, mitigation. For change_request: title, description, reason, status, impact_analysis. For decision: title, decision_text, alternatives_jsonb (dict), source_link. For stakeholder: stakeholder_sub, role, influence, interest, satisfaction, status (pending/active/revoked). For action_item: description, owner_name, due_date (ISO), status (pending/met/missed).")
 
 
 class WorkItemUpdateOutput(BaseModel):
@@ -105,10 +105,31 @@ class WorkItemUpdateTool(Tool):
         
         is_work_item = entity_type not in ["risk", "decision", "change_request", "stakeholder", "action_item"]
 
-        EntityClass = WorkItem if is_work_item else (Risk if entity_type == "risk" else (Decision if entity_type == "decision" else (ChangeRequest if entity_type == "change_request" else (Stakeholder if entity_type == "stakeholder" else Commitment))))
+        EntityClass = WorkItem if is_work_item else (Risk if entity_type == "risk" else (Decision if entity_type == "decision" else (ChangeRequest if entity_type == "change_request" else (ProgramStakeholder if entity_type == "stakeholder" else Commitment))))
         entity = None
         
-        if entity_id_str:
+        if entity_type == "stakeholder":
+            # Primary keys for ProgramStakeholder are (stakeholder_sub, tenant_id, program_id)
+            parent_uuid = uuid.UUID(parent_id_str) if parent_id_str else None
+            stakeholder_sub_str = payload.get("stakeholder_sub")
+            if not stakeholder_sub_str or not parent_uuid:
+                raise ValueError("stakeholder_sub and parent_id (program_id) are required when updating a stakeholder.")
+            
+            sub_uuid = uuid.UUID(stakeholder_sub_str)
+            stmt = select(ProgramStakeholder).where(
+                ProgramStakeholder.tenant_id == uuid.UUID(context.tenant_id),
+                ProgramStakeholder.program_id == parent_uuid,
+                ProgramStakeholder.stakeholder_sub == sub_uuid
+            )
+            entity = context.session.scalar(stmt)
+            if not entity:
+                entity = ProgramStakeholder(
+                    stakeholder_sub=sub_uuid,
+                    tenant_id=uuid.UUID(context.tenant_id),
+                    program_id=parent_uuid
+                )
+                context.session.add(entity)
+        elif entity_id_str:
             entity = context.session.get(EntityClass, uuid.UUID(entity_id_str))
             if not entity:
                 raise ValueError(f"{entity_type} with ID {entity_id_str} not found.")
@@ -127,8 +148,6 @@ class WorkItemUpdateTool(Tool):
                 stmt = stmt.where(EntityClass.work_item_id == parent_uuid)
                 if entity_type in ["risk", "decision", "change_request"]:
                     stmt = stmt.where(EntityClass.title == payload.get("title", ""))
-                elif entity_type == "stakeholder":
-                    stmt = stmt.where(EntityClass.name == payload.get("name", ""))
                 elif entity_type == "action_item":
                     stmt = stmt.where(EntityClass.description == payload.get("description", ""))
 
@@ -141,9 +160,10 @@ class WorkItemUpdateTool(Tool):
                     entity.item_type = entity_type
                     entity.parent_id = parent_uuid
                 else:
-                    if not parent_id_str:
+                    if not parent_id_str and entity_type != "stakeholder":
                         raise ValueError(f"parent_id (work_item_id) is required when creating a {entity_type}.")
-                    entity.work_item_id = parent_uuid
+                    if entity_type != "stakeholder":
+                        entity.work_item_id = parent_uuid
                 context.session.add(entity)
 
         # Handle date parsing and dependencies
@@ -175,7 +195,10 @@ class WorkItemUpdateTool(Tool):
 
         context.session.commit()
 
-        return WorkItemUpdateOutput(id=str(entity.id)).model_dump()
+        if entity_type == "stakeholder":
+            return WorkItemUpdateOutput(id=str(entity.stakeholder_sub)).model_dump()
+        else:
+            return WorkItemUpdateOutput(id=str(entity.id)).model_dump()
 
 
 class ProgramCriticalPathInput(BaseModel):

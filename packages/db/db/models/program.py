@@ -42,22 +42,26 @@ class WorkItem(TenantBoundBase):
         ),
     )
 
-class Stakeholder(TenantBoundBase):
-    __tablename__ = "stakeholders"
+class ProgramStakeholder(TenantBoundBase):
+    __tablename__ = "program_stakeholders"
 
-    work_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("work_items.id", ondelete="CASCADE"))
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    email: Mapped[str | None] = mapped_column(String, nullable=True)
-    preferred_communication: Mapped[str | None] = mapped_column(String, default="email", nullable=True)
+    stakeholder_sub: Mapped[uuid.UUID] = mapped_column(primary_key=True) # References StakeholderProfile.sub
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
+    program_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("work_items.id", ondelete="CASCADE"), primary_key=True)
     role: Mapped[str | None] = mapped_column(String, nullable=True)
     influence: Mapped[str | None] = mapped_column(String, nullable=True)
     interest: Mapped[str | None] = mapped_column(String, nullable=True)
     satisfaction: Mapped[str | None] = mapped_column(String, nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    invited_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
+    accepted_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
+
+    profile = relationship("StakeholderProfile", primaryjoin="ProgramStakeholder.stakeholder_sub == StakeholderProfile.sub", foreign_keys="ProgramStakeholder.stakeholder_sub", uselist=False)
 
     __table_args__ = (
         CheckConstraint("influence IN ('low', 'med', 'high')", name="chk_sh_influence"),
         CheckConstraint("interest IN ('low', 'med', 'high')", name="chk_sh_interest"),
+        CheckConstraint("status IN ('pending', 'active', 'revoked')", name="chk_sh_status"),
     )
 
 

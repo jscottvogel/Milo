@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from db.models.program import WorkItem, Risk, Decision, ChangeRequest, Stakeholder, Commitment
+from db.models.program import WorkItem, Risk, Decision, ChangeRequest, ProgramStakeholder, Commitment
 from fastapi import BackgroundTasks
 import asyncio
 import json
@@ -169,7 +169,7 @@ def get_dashboard(request: Request):
     )
 
 
-def build_tree(items: list[WorkItem], parent_id: uuid.UUID | None, all_risks: list[Risk] | None = None, all_crs: list[ChangeRequest] | None = None, all_decisions: list[Decision] | None = None, all_stakeholders: list[Stakeholder] | None = None, all_action_items: list[Commitment] | None = None) -> list[WorkItemTreeResponse]:
+def build_tree(items: list[WorkItem], parent_id: uuid.UUID | None, all_risks: list[Risk] | None = None, all_crs: list[ChangeRequest] | None = None, all_decisions: list[Decision] | None = None, all_stakeholders: list[ProgramStakeholder] | None = None, all_action_items: list[Commitment] | None = None) -> list[WorkItemTreeResponse]:
     if all_risks is None: all_risks = []
     if all_crs is None: all_crs = []
     if all_decisions is None: all_decisions = []
@@ -199,9 +199,9 @@ def build_tree(items: list[WorkItem], parent_id: uuid.UUID | None, all_risks: li
             ]
             node_stakeholders = [
                 StakeholderResponse(
-                    id=str(sh.id), work_item_id=str(sh.work_item_id) if sh.work_item_id else None,
-                    name=sh.name, email=sh.email, role=sh.role, influence=sh.influence, interest=sh.interest, satisfaction=sh.satisfaction, notes=sh.notes
-                ) for sh in all_stakeholders if sh.work_item_id == item.id
+                    id=str(sh.stakeholder_sub), work_item_id=str(sh.program_id) if sh.program_id else None,
+                    name=sh.profile.full_name if sh.profile else "Unknown", email=None, role=sh.role, influence=sh.influence, interest=sh.interest, satisfaction=sh.satisfaction, notes=None
+                ) for sh in all_stakeholders if sh.program_id == item.id
             ]
             node_action_items = [
                 ActionItemResponse(
@@ -245,7 +245,7 @@ def get_full_tree(request: Request):
     all_risks = db.scalars(select(Risk).where(Risk.tenant_id == tenant_id)).all()
     all_crs = db.scalars(select(ChangeRequest).where(ChangeRequest.tenant_id == tenant_id)).all()
     all_decisions = db.scalars(select(Decision).where(Decision.tenant_id == tenant_id)).all()
-    all_stakeholders = db.scalars(select(Stakeholder).where(Stakeholder.tenant_id == tenant_id)).all()
+    all_stakeholders = db.scalars(select(ProgramStakeholder).where(ProgramStakeholder.tenant_id == tenant_id)).all()
     all_action_items = db.scalars(select(Commitment).where(Commitment.tenant_id == tenant_id)).all()
     
     return build_tree(all_items, None, all_risks, all_crs, all_decisions, all_stakeholders, all_action_items)
@@ -324,7 +324,7 @@ def get_work_item_details(request: Request, item_id: str):
     all_risks = db.scalars(select(Risk).where(Risk.tenant_id == uuid.UUID(tenant_id))).all()
     all_crs = db.scalars(select(ChangeRequest).where(ChangeRequest.tenant_id == uuid.UUID(tenant_id))).all()
     all_decisions = db.scalars(select(Decision).where(Decision.tenant_id == uuid.UUID(tenant_id))).all()
-    all_stakeholders = db.scalars(select(Stakeholder).where(Stakeholder.tenant_id == uuid.UUID(tenant_id))).all()
+    all_stakeholders = db.scalars(select(ProgramStakeholder).where(ProgramStakeholder.tenant_id == uuid.UUID(tenant_id))).all()
     all_action_items = db.scalars(select(Commitment).where(Commitment.tenant_id == uuid.UUID(tenant_id))).all()
 
     root_risks = [
@@ -347,9 +347,9 @@ def get_work_item_details(request: Request, item_id: str):
     ]
     root_stakeholders = [
         StakeholderResponse(
-            id=str(sh.id), work_item_id=str(sh.work_item_id) if sh.work_item_id else None,
-            name=sh.name, email=sh.email, role=sh.role, influence=sh.influence, interest=sh.interest, satisfaction=sh.satisfaction, notes=sh.notes
-        ) for sh in all_stakeholders if sh.work_item_id == item.id
+            id=str(sh.stakeholder_sub), work_item_id=str(sh.program_id) if sh.program_id else None,
+            name=sh.profile.full_name if sh.profile else "Unknown", email=None, role=sh.role, influence=sh.influence, interest=sh.interest, satisfaction=sh.satisfaction, notes=None
+        ) for sh in all_stakeholders if sh.program_id == item.id
     ]
     root_action_items = [
         ActionItemResponse(

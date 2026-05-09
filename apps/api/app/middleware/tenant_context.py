@@ -32,3 +32,6 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
             import traceback
             traceback.print_exc()
             raise e
+
+def get_current_tenant_id(request: Request) -> str:
+    return getattr(request.state, "tenant_id", None)

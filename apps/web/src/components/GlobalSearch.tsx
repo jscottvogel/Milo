@@ -1,7 +1,9 @@
+"use client";
+
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, FileText, Mail, CheckCircle, Package } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore } from '@/store/useAppStore';
 
 export const GlobalSearch: React.FC = () => {
   const { isSearchOpen, setSearchOpen } = useAppStore();

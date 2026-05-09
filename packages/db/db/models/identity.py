@@ -71,3 +71,23 @@ class Milo(TenantBoundBase):
     __table_args__ = (
         CheckConstraint("persona_pack IN ('trades', 'sme')", name="chk_milo_persona"),
     )
+
+class StakeholderProfile(Base):
+    __tablename__ = "stakeholder_profiles"
+
+    sub: Mapped[uuid.UUID] = mapped_column(primary_key=True) # Cognito sub
+    full_name: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str | None] = mapped_column(String, nullable=True)
+    preferred_channel: Mapped[str] = mapped_column(String, default="email", nullable=False)
+    frequency: Mapped[str] = mapped_column(String, default="real-time", nullable=False)
+    timezone: Mapped[str | None] = mapped_column(String, nullable=True)
+    bio: Mapped[str | None] = mapped_column(String, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("preferred_channel IN ('email', 'sms', 'slack', 'teams', 'in-app')", name="chk_sh_pref_channel"),
+        CheckConstraint("frequency IN ('real-time', 'daily-digest', 'weekly-summary')", name="chk_sh_freq"),
+    )
