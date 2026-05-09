@@ -86,10 +86,29 @@ class AgentRunner:
 
         program_context = self.program_memory.get_context(milo_id=self.milo_id)
 
-        # 2. Build system prompt
+        # 2. Pre-flight memory search
+        memory_injections = ""
+        mem_tool = registry.get_tool("memory.search")
+        if mem_tool and user_message:
+            context = AgentContext(
+                session=self.session,
+                tenant_id=self.tenant_id,
+                milo_id=self.milo_id,
+                thread_id=self.thread_id,
+                integration_tokens=self.integration_tokens
+            )
+            try:
+                search_res = await mem_tool.invoke({"query": user_message, "limit": 5}, context)
+                if search_res and "results" in search_res:
+                    memory_injections = "\n".join([str(r) for r in search_res["results"]])
+            except Exception as e:
+                logger.error(f"Pre-flight memory search failed: {e}")
+
+        # 3. Build system prompt
         system_prompt = build_system_prompt(
             persona_pack="sme",
-            program_context=program_context
+            program_context=program_context,
+            memory_injections=memory_injections
         )
         
         bedrock_tools = self._format_tools_for_bedrock()
@@ -196,10 +215,29 @@ class AgentRunner:
 
         program_context = self.program_memory.get_context(milo_id=self.milo_id)
 
-        # 2. Build system prompt
+        # 2. Pre-flight memory search
+        memory_injections = ""
+        mem_tool = registry.get_tool("memory.search")
+        if mem_tool:
+            context = AgentContext(
+                session=self.session,
+                tenant_id=self.tenant_id,
+                milo_id=self.milo_id,
+                thread_id=self.thread_id,
+                integration_tokens=self.integration_tokens
+            )
+            try:
+                search_res = await mem_tool.invoke({"query": trigger_reason, "limit": 5}, context)
+                if search_res and "results" in search_res:
+                    memory_injections = "\n".join([str(r) for r in search_res["results"]])
+            except Exception as e:
+                logger.error(f"Pre-flight memory search failed: {e}")
+
+        # 3. Build system prompt
         system_prompt = build_system_prompt(
             persona_pack="sme",
-            program_context=program_context
+            program_context=program_context,
+            memory_injections=memory_injections
         )
         
         # 3. Setup dummy Queue to satisfy graph.py's expectation, and consume it silently
@@ -214,8 +252,8 @@ class AgentRunner:
         consumer_task = asyncio.create_task(_consume_queue())
 
         try:
-            workflow = build_graph()
-            config = {"configurable": {"runner": self, "queue": stream_queue}}
+            workflow = build_graph(checkpointer=self._get_checkpointer())
+            config = {"configurable": {"thread_id": self.thread_id, "runner": self, "queue": stream_queue}, "recursion_limit": 50}
             
             state: AgentState = {
                 "thread_id": self.thread_id,
@@ -226,6 +264,7 @@ class AgentRunner:
                 "approvals_pending": [],
                 "finish_reason": None,
                 "turn_count": 0,
+                "iterations": 0,
                 "cost_usd": 0.0
             }
             
@@ -260,12 +299,99 @@ class AgentRunner:
                 )
             except Exception as e:
                 logger.debug(f"Failed to emit CW metrics: {e}")
+                
+            # Write daily run log
+            try:
+                storage_tool = registry.get_tool("storage.write")
+                if storage_tool:
+                    context = AgentContext(
+                        session=self.session,
+                        tenant_id=self.tenant_id,
+                        milo_id=self.milo_id,
+                        thread_id=self.thread_id,
+                        integration_tokens=self.integration_tokens
+                    )
+                    today = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
+                    summary_content = f"Autonomous Run: {trigger_reason}\nThread: {self.thread_id}\nCost: ${turn_cost:.4f}\n"
+                    await storage_tool.invoke({
+                        "path": f"logs/daily_run_{today}.md",
+                        "content": summary_content,
+                        "append": True
+                    }, context)
+            except Exception as e:
+                logger.error(f"Failed to write daily run log: {e}")
             
             await stream_queue.put({"type": "done", "reason": final_state.get("finish_reason")})
+        except RecursionError as re:
+            error_msg = "Milo stalled due to recursion limit (50 steps)."
+            logger.error(error_msg)
+            try:
+                email_tool = registry.get_tool("email.send")
+                context = AgentContext(
+                    session=self.session,
+                    tenant_id=self.tenant_id,
+                    milo_id=self.milo_id,
+                    thread_id=self.thread_id,
+                    integration_tokens=self.integration_tokens
+                )
+                if email_tool:
+                    await email_tool.invoke({
+                        "to": ["j_scott_vogel@yahoo.com"],
+                        "subject": "System Alert: Milo Execution Stalled",
+                        "body": f"Milo autonomous execution stalled and self-terminated.\nReason: {trigger_reason}\nThread ID: {self.thread_id}"
+                    }, context)
+            except Exception as e:
+                logger.error(f"Failed to send recovery email: {e}")
+            await stream_queue.put({"type": "error", "error": error_msg})
         except Exception as e:
             import traceback
             traceback.print_exc()
             await stream_queue.put({"type": "error", "error": str(e)})
 
+        await consumer_task
+
+    def _get_checkpointer(self):
+        import sqlite3
+        from langgraph.checkpoint.sqlite import SqliteSaver
+        conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+        return SqliteSaver(conn)
+
+    async def resume_turn(self, approval_id: str, decision: str, notes: str | None = None) -> None:
+        """Resume the LangGraph thread from an interrupt."""
+        from langgraph.types import Command
+        import traceback
+        
+        workflow = build_graph(checkpointer=self._get_checkpointer())
+        stream_queue = asyncio.Queue()
+        config = {
+            "configurable": {
+                "thread_id": self.thread_id,
+                "runner": self,
+                "queue": stream_queue
+            },
+            "recursion_limit": 50
+        }
+        
+        response_payload = {
+            "status": decision,
+            "notes": notes,
+            "approval_id": approval_id
+        }
+        
+        async def _consume_queue():
+            while True:
+                event = await stream_queue.get()
+                if event["type"] in ["done", "error"]:
+                    break
+                    
+        consumer_task = asyncio.create_task(_consume_queue())
+        
+        try:
+            final_state = await workflow.ainvoke(Command(resume=response_payload), config=config)
+            await stream_queue.put({"type": "done", "reason": "resumed_and_finished"})
+        except Exception as e:
+            traceback.print_exc()
+            await stream_queue.put({"type": "error", "error": str(e)})
+            
         await consumer_task
 

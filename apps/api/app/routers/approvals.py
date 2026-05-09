@@ -92,3 +92,53 @@ def decide_on_approval(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+from db.models.agent import ApprovalRequest
+import datetime
+from pydantic import BaseModel
+from agent.runner import AgentRunner
+
+class ApprovalResumeRequest(BaseModel):
+    decision: str
+    notes: str | None = None
+
+@router.post("/{approval_id}/resume")
+async def resume_approval(
+    request: Request,
+    approval_id: str,
+    payload: ApprovalResumeRequest
+):
+    context = getattr(request.state, "auth_context", None)
+    if not context:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    db = getattr(request.state, "db", None)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database session not found")
+        
+    req = db.get(ApprovalRequest, uuid.UUID(approval_id))
+    if not req or str(req.tenant_id) != context.tenant_id:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+        
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="Approval request is not pending")
+        
+    # Update DB record
+    req.status = payload.decision
+    req.response_notes = payload.notes
+    req.resolved_at = datetime.datetime.now(datetime.UTC)
+    db.commit()
+    db.refresh(req)
+    
+    # Resume the agent thread
+    runner = AgentRunner(
+        session=db,
+        tenant_id=str(req.tenant_id),
+        thread_id=str(req.thread_id),
+        milo_id=str(req.milo_id)
+    )
+    
+    # Run the resume hook in the background
+    import asyncio
+    asyncio.create_task(runner.resume_turn(approval_id, payload.decision, payload.notes))
+    
+    return {"status": "resuming", "approval_id": approval_id, "decision": payload.decision}

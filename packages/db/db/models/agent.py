@@ -98,3 +98,28 @@ class Notification(TenantBoundBase):
     __table_args__ = (
         CheckConstraint("type IN ('approval_required', 'warning', 'info')", name="chk_notification_type"),
     )
+
+
+class ApprovalRequest(TenantBoundBase):
+    __tablename__ = "approval_requests"
+
+    milo_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("milos.id", ondelete="CASCADE"))
+    thread_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("threads.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    options_jsonb: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    context_payload_jsonb: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    urgency: Mapped[str] = mapped_column(String, nullable=False, default="medium")
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    response_notes: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(server_default=func.now())
+    resolved_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'modified', 'expired', 'timeout')", name="chk_approval_req_status"
+        ),
+        CheckConstraint(
+            "urgency IN ('low', 'medium', 'high')", name="chk_approval_req_urgency"
+        ),
+    )

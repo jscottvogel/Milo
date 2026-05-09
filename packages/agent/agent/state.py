@@ -21,4 +21,5 @@ class AgentState(TypedDict):
 
     # Observability and guardrails
     turn_count: int
+    iterations: int
     cost_usd: float

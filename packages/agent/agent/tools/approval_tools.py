@@ -19,6 +19,45 @@ class ApprovalCreateInput(BaseModel):
     work_item_id: Optional[str] = Field(None, description="Linked work item UUID")
     metadata_: Optional[dict] = Field(None, alias="metadata", description="Any extra context")
 
+# --- request_approval ---
+class RequestApprovalInput(BaseModel):
+    title: str = Field(description="Short title of the decision")
+    description: str = Field(description="Full context of what needs to be decided")
+    options: List[str] = Field(default=["approve", "reject", "modify"], description="Valid options for the human to choose")
+    context_payload: dict = Field(default_factory=dict, description="JSON payload representing the action to be taken")
+    urgency: str = Field(default="medium", description="low, medium, or high")
+
+@tool("request_approval")
+async def request_approval(input_data: RequestApprovalInput, context: Any = None) -> dict:
+    """
+    Request structured approval from a human for an irreversible action.
+    This will pause execution until the human decides.
+    """
+    import uuid
+    from db.models.agent import ApprovalRequest
+    
+    # Store to DB
+    req = ApprovalRequest(
+        tenant_id=uuid.UUID(context.tenant_id),
+        milo_id=uuid.UUID(context.milo_id),
+        thread_id=uuid.UUID(context.thread_id),
+        title=input_data.title,
+        description=input_data.description,
+        options_jsonb=input_data.options,
+        context_payload_jsonb=input_data.context_payload,
+        urgency=input_data.urgency,
+        status="pending"
+    )
+    context.session.add(req)
+    context.session.commit()
+    context.session.refresh(req)
+    
+    # Returning this specific payload tells the LangGraph loop to route to the interrupt node
+    return {
+        "status": "interrupt_requested",
+        "approval_id": str(req.id)
+    }
+
 @tool("approval__create")
 async def approval__create(input_data: ApprovalCreateInput, context: Any = None) -> dict:
     """

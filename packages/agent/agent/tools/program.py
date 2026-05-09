@@ -176,3 +176,248 @@ class WorkItemUpdateTool(Tool):
         context.session.commit()
 
         return WorkItemUpdateOutput(id=str(entity.id)).model_dump()
+
+
+class ProgramCriticalPathInput(BaseModel):
+    program_id: str = Field(description="The UUID of the program/project to analyze.")
+    what_if_task_id: str | None = Field(default=None, description="Optional UUID of a task to slip.")
+    what_if_slip_days: int | None = Field(default=None, description="Number of days to slip the what-if task.")
+
+
+class ProgramCriticalPathOutput(BaseModel):
+    critical_path: list[str] = Field(description="List of task names on the critical path.")
+    tasks: dict[str, Any] = Field(description="Detailed CPM metrics per task.")
+    blockers: list[dict[str, Any]] = Field(description="List of blocking relationships.")
+    mermaid_diagram: str = Field(description="Mermaid.js diagram of the critical path.")
+    summary: str = Field(description="Human readable summary.")
+
+
+class ProgramCriticalPathTool(Tool):
+    name = "program.critical_path"
+    description = "Compute the critical path for a program, identifying zero-float tasks, duration, blocking relationships, and schedule risks. Allows what-if scenario slips."
+    input_schema = ProgramCriticalPathInput
+    output_schema = ProgramCriticalPathOutput
+    mutates = False
+    requires_approval = False
+
+    async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
+        import networkx as nx
+        import uuid
+        import json
+        from sqlalchemy import select
+        
+        program_id_str = input_data["program_id"]
+        what_if_task_id = input_data.get("what_if_task_id")
+        what_if_slip_days = input_data.get("what_if_slip_days")
+        
+        # Load all items for tenant to build the tree efficiently
+        stmt = select(WorkItem).where(WorkItem.tenant_id == uuid.UUID(context.tenant_id))
+        all_items = context.session.scalars(stmt).all()
+        
+        items_by_id = {str(item.id): item for item in all_items}
+        
+        if program_id_str not in items_by_id:
+            raise ValueError(f"Program/Project {program_id_str} not found.")
+            
+        # Recursive function to get all descendants
+        relevant_ids = set()
+        def collect_children(node_id):
+            relevant_ids.add(node_id)
+            for item in all_items:
+                if item.parent_id and str(item.parent_id) == node_id:
+                    collect_children(str(item.id))
+                    
+        collect_children(program_id_str)
+        
+        graph = nx.DiGraph()
+        
+        # Add nodes
+        for item_id in relevant_ids:
+            item = items_by_id[item_id]
+            assumed_duration = False
+            duration = 1
+            if item.start_date and item.due_date:
+                duration = max(1, (item.due_date - item.start_date).days)
+            else:
+                assumed_duration = True
+                
+            if what_if_task_id == item_id and what_if_slip_days:
+                duration += what_if_slip_days
+                
+            graph.add_node(item_id, name=item.name, duration=duration, assumed=assumed_duration, status=item.status)
+            
+        # Add edges (dependencies)
+        import logging
+        for item_id in relevant_ids:
+            item = items_by_id[item_id]
+            if item.dependencies:
+                for dep in item.dependencies:
+                    dep_id = None
+                    if dep in items_by_id:
+                        dep_id = dep
+                    else:
+                        # Try finding by name (case-insensitive, trim whitespace, normalize hyphens)
+                        def normalize(s):
+                            return s.strip().lower().replace("—", "-").replace("–", "-")
+                        for aid in relevant_ids:
+                            # Use startswith to match 'Phase 2 Complete' against 'Phase 2 Complete - Cognito...'
+                            if normalize(items_by_id[aid].name).startswith(normalize(dep)):
+                                dep_id = aid
+                                break
+                    if dep_id and dep_id in relevant_ids:
+                        graph.add_edge(dep_id, item_id)
+                    else:
+                        logging.warning(f"Dependency '{dep}' could not be resolved to a valid UUID for item {item.name}. Skipping edge.")
+                        
+        # Check for cycles
+        try:
+            cycle = nx.find_cycle(graph, orientation="original")
+            return {"error": "Circular dependency detected", "cycle": str(cycle)}
+        except nx.NetworkXNoCycle:
+            pass
+            
+        topo_order = list(nx.topological_sort(graph))
+        
+        # Forward pass
+        es = {}
+        ef = {}
+        for node in topo_order:
+            preds = list(graph.predecessors(node))
+            if not preds:
+                es[node] = 0
+            else:
+                es[node] = max(ef[p] for p in preds)
+            ef[node] = es[node] + graph.nodes[node]["duration"]
+            
+        # Backward pass
+        ls = {}
+        lf = {}
+        
+        # Calculate project_duration based explicitly on the program's due_date if available
+        program_item = items_by_id.get(program_id_str)
+        if program_item and program_item.due_date:
+            earliest_start = program_item.start_date
+            if not earliest_start:
+                starts = [items_by_id[n].start_date for n in relevant_ids if items_by_id[n].start_date]
+                earliest_start = min(starts) if starts else None
+            
+            if earliest_start:
+                project_duration = max(1, (program_item.due_date - earliest_start).days)
+            else:
+                connected_nodes = [n for n in topo_order if list(graph.predecessors(n)) or list(graph.successors(n))]
+                project_duration = max([ef[n] for n in connected_nodes]) if connected_nodes else (max(ef.values()) if ef else 0)
+        else:
+            connected_nodes = [n for n in topo_order if list(graph.predecessors(n)) or list(graph.successors(n))]
+            project_duration = max([ef[n] for n in connected_nodes]) if connected_nodes else (max(ef.values()) if ef else 0)
+        
+        for node in reversed(topo_order):
+            succs = list(graph.successors(node))
+            if not succs:
+                lf[node] = project_duration
+            else:
+                lf[node] = min(ls[s] for s in succs)
+            ls[node] = lf[node] - graph.nodes[node]["duration"]
+            
+        # Floats & Critical Path
+        floats = {}
+        critical_path = []
+        task_details = {}
+        
+        for node in topo_order:
+            f = ls[node] - es[node]
+            floats[node] = f
+            item_type = items_by_id[node].item_type if node in items_by_id else "unknown"
+            
+            # Validation assertion for negative float
+            if f < 0 and program_item and program_item.due_date and items_by_id[node].due_date:
+                if items_by_id[node].due_date <= program_item.due_date:
+                    raise ValueError(f"Negative float {f} on {items_by_id[node].name} but due date is within program window")
+            
+            if f <= 0 and item_type in ("milestone", "phase-gate"):
+                critical_path.append({
+                    "id": node,
+                    "name": graph.nodes[node]["name"],
+                    "type": item_type,
+                    "float": f
+                })
+                
+            task_details[node] = {
+                "name": graph.nodes[node]["name"],
+                "type": item_type,
+                "duration": graph.nodes[node]["duration"],
+                "assumed_duration": graph.nodes[node]["assumed"],
+                "early_start": es[node],
+                "early_finish": ef[node],
+                "late_start": ls[node],
+                "late_finish": lf[node],
+                "float": f,
+                "is_critical": f <= 0
+            }
+            
+        # Blockers
+        blockers = []
+        for node in topo_order:
+            preds = list(graph.predecessors(node))
+            succs = list(graph.successors(node))
+            if preds or succs:
+                blockers.append({
+                    "task": graph.nodes[node]["name"],
+                    "blocked_by": [graph.nodes[p]["name"] for p in preds],
+                    "blocking": [graph.nodes[s]["name"] for s in succs]
+                })
+                
+        # Mermaid
+        mermaid_lines = ["graph TD;"]
+        for u, v in graph.edges():
+            u_name = graph.nodes[u]["name"].replace('"', '')
+            v_name = graph.nodes[v]["name"].replace('"', '')
+            if floats[u] <= 0 and floats[v] <= 0:
+                mermaid_lines.append(f'  "{u_name}" -->|Critical| "{v_name}";')
+                mermaid_lines.append(f'  style "{u_name}" stroke:#f66,stroke-width:2px;')
+                mermaid_lines.append(f'  style "{v_name}" stroke:#f66,stroke-width:2px;')
+            else:
+                mermaid_lines.append(f'  "{u_name}" --> "{v_name}";')
+                
+        mermaid_diagram = "\\n".join(mermaid_lines)
+        
+        milestones_in_critical = len([n for n in critical_path if n["type"] in ("milestone", "phase-gate")])
+        summary = f"Project duration is {project_duration} days. Critical path contains {len(critical_path)} items ({milestones_in_critical} milestones). "
+        if what_if_task_id and what_if_task_id in task_details:
+            summary += f"(Includes WHAT-IF slip of {what_if_slip_days} days on {task_details[what_if_task_id]['name']})"
+        # Sort critical path by Early Start (to show chronological order)
+        critical_path_sorted = sorted(critical_path, key=lambda x: es.get(x["id"], 0))
+        
+        result = {
+            "program_id": program_id_str,
+            "project_duration_days": project_duration,
+            "critical_path": critical_path_sorted,
+            "tasks": task_details,
+            "blockers": blockers,
+            "mermaid_diagram": mermaid_diagram.replace("\\n", "\n"),
+            "summary": summary
+        }
+        
+        # Save to storage
+        from agent.tools.registry import registry
+        storage_tool = registry.get_tool("storage.write")
+        if storage_tool:
+            try:
+                await storage_tool.invoke({
+                    "path": f"program_data/{program_id_str}/critical_path_latest.json",
+                    "content": json.dumps(result, indent=2)
+                }, context)
+            except Exception:
+                pass
+            
+        # Save to memory
+        memory_tool = registry.get_tool("memory.write")
+        if memory_tool:
+            try:
+                await memory_tool.invoke({
+                    "kind": "event",
+                    "content": f"Computed Critical Path for {items_by_id[program_id_str].name}. Duration: {project_duration} days."
+                }, context)
+            except Exception:
+                pass
+            
+        return result

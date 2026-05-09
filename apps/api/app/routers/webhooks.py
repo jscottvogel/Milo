@@ -48,15 +48,12 @@ async def process_nylas_webhook(payload: dict):
                 prompt = f"[SYSTEM NOTIFICATION - NYLAS WEBHOOK] New email received.\nSubject: {subject}\nBody: {snippet}\nPlease review and take action."
                 
                 logger.info("Waking up Milo via Nylas Webhook...")
-                async for event in runner.run_turn(prompt):
-                    if event["type"] == "tool_use_start":
-                        logger.info(f"Milo is using tool: {event['name']}")
+                await runner.run_autonomous_turn(prompt)
                         
             elif trigger_type == "event.created":
                 title = data.get("object", {}).get("title", "No Title")
                 prompt = f"[SYSTEM NOTIFICATION - NYLAS WEBHOOK] New calendar event created: {title}. Please review."
-                async for event in runner.run_turn(prompt):
-                    pass
+                await runner.run_autonomous_turn(prompt)
                     
     except Exception as e:
         logger.error(f"Error processing webhook: {str(e)}")

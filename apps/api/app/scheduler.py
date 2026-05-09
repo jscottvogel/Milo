@@ -40,7 +40,33 @@ async def evaluate_triggers():
                     milo_id=str(milo.id)
                 )
                 
-                await runner.run_autonomous_turn("Scheduled Hourly Trigger Evaluation")
+                # Check config
+                context = AgentContext(
+                    session=db,
+                    tenant_id=str(tenant.id),
+                    milo_id=str(milo.id),
+                    thread_id=runner.thread_id,
+                    integration_tokens=runner.integration_tokens
+                )
+                
+                is_enabled = True
+                storage_tool = registry.get_tool("storage.read")
+                if storage_tool:
+                    try:
+                        res = await storage_tool.invoke({"path": "config/scheduler.json"}, context)
+                        if isinstance(res, dict) and "content" in res:
+                            import json
+                            config = json.loads(res["content"])
+                            if "hourly_health_check" in config:
+                                is_enabled = config["hourly_health_check"].get("enabled", True)
+                    except Exception as e:
+                        logger.warning(f"Could not read config/scheduler.json: {e}")
+                        
+                if not is_enabled:
+                    logger.info(f"Hourly health check disabled for tenant {tenant.id}")
+                    continue
+                
+                await runner.run_autonomous_turn("Hourly Health Check. Evaluate triggers, check overdue tasks, and act if rules fire.")
     except Exception as e:
         logger.error(f"Error evaluating triggers: {e}")
 
@@ -66,14 +92,40 @@ async def run_weekly_review():
                     milo_id=str(milo.id)
                 )
                 
-                await runner.run_autonomous_turn("Scheduled Weekly Review (Mondays at 9 AM)")
+                # Check config
+                context = AgentContext(
+                    session=db,
+                    tenant_id=str(tenant.id),
+                    milo_id=str(milo.id),
+                    thread_id=runner.thread_id,
+                    integration_tokens=runner.integration_tokens
+                )
+                
+                is_enabled = True
+                storage_tool = registry.get_tool("storage.read")
+                if storage_tool:
+                    try:
+                        res = await storage_tool.invoke({"path": "config/scheduler.json"}, context)
+                        if isinstance(res, dict) and "content" in res:
+                            import json
+                            config = json.loads(res["content"])
+                            if "stale_program_scan" in config:
+                                is_enabled = config["stale_program_scan"].get("enabled", True)
+                    except Exception as e:
+                        logger.warning(f"Could not read config/scheduler.json: {e}")
+                        
+                if not is_enabled:
+                    logger.info(f"Stale program scan disabled for tenant {tenant.id}")
+                    continue
+                
+                await runner.run_autonomous_turn("Stale Program Daily Scan. Scan active programs for 7+ days inactivity and send a nudge email.")
     except Exception as e:
         logger.error(f"Error evaluating weekly review: {e}")
 
 def start_scheduler():
     # Morning briefing is now handled entirely by AWS EventBridge Scheduler.
     # Triggers evaluation (e.g. every hour)
-    eval_cron = os.environ.get("SCHEDULE_EVALUATE_TRIGGERS", "0 */4 * * *")  # Every 4 hours
+    eval_cron = os.environ.get("SCHEDULE_EVALUATE_TRIGGERS", "0 * * * *")  # Hourly
     parts = eval_cron.split()
     if len(parts) == 5:
         scheduler.add_job(

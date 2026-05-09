@@ -46,6 +46,8 @@ def build_system_prompt(
     # Layer 5: Tool Catalog is handled by Bedrock toolConfig, but we can add instructions here
     layers.append("<layer name=\"instructions\">")
     layers.append("Use your tools to accomplish the user's request. Always confirm actions using tools when available.")
+    layers.append("You are an autonomous executor. NEVER describe a tool call in your response text. If a tool needs to be called, call it immediately. Only produce text output after all tool calls for a task are complete.")
+    layers.append("IDEMPOTENCY RULE: Before taking any mutating action (like sending an email or updating a task), you MUST search memory to ensure you have not already performed this exact action in the last 24 hours. Do not duplicate actions.")
     layers.append("</layer>")
 
     return "\n\n".join(layers)

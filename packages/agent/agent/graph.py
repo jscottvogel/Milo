@@ -11,15 +11,7 @@ from db.models.identity import Milo
 
 from langchain_core.runnables import RunnableConfig
 
-async def perceive_node(state: AgentState):
-    # Process incoming context, check budgets
-    return {"turn_count": state.get("turn_count", 0) + 1}
-
-async def plan_node(state: AgentState):
-    # For Phase 3, we just pass through
-    return state
-
-async def act_node(state: AgentState, config: RunnableConfig):
+async def milo_agent(state: AgentState, config: RunnableConfig):
     runner = config["configurable"]["runner"]
     queue = config["configurable"]["queue"]
 
@@ -114,10 +106,12 @@ async def act_node(state: AgentState, config: RunnableConfig):
         "messages": [ai_msg],
         "pending_tool_calls": tool_calls,
         "finish_reason": "tool_calls" if stop_reason == "tool_use" and tool_calls else "stop",
-        "cost_usd": state.get("cost_usd", 0.0) + turn_cost
+        "cost_usd": state.get("cost_usd", 0.0) + turn_cost,
+        "iterations": state.get("iterations", 0) + 1,
+        "turn_count": state.get("turn_count", 0) + 1
     }
 
-async def observe_node(state: AgentState, config: RunnableConfig):
+async def tools(state: AgentState, config: RunnableConfig):
     runner = config["configurable"]["runner"]
     queue = config["configurable"]["queue"]
     from agent.tools.context import AgentContext
@@ -174,6 +168,27 @@ async def observe_node(state: AgentState, config: RunnableConfig):
                 result_str = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
                 if tool.name in ["web.fetch", "web.search", "storage.read"]:
                     result_str = f"<untrusted>\n{result_str}\n</untrusted>"
+                    
+                if isinstance(result, dict) and result.get("status") == "interrupt_requested":
+                    finish_reason = "interrupt_requested"
+                    result_str = f"Approval Request queued with ID {result.get('approval_id')}. Waiting for human decision."
+                    
+                # Truncate large payloads
+                if len(result_str) > 8000:
+                    result_str = result_str[:8000] + "\n...[Output truncated due to length]"
+
+                # Auto memory write for mutating tools
+                if tool.mutates and tool.name != "memory.write":
+                    mem_tool = registry.get_tool("memory.write")
+                    if mem_tool:
+                        try:
+                            await mem_tool.invoke({
+                                "kind": "event",
+                                "content": f"Executed mutating tool {tool.name} with args {tc['args']}."
+                            }, context)
+                        except Exception as mem_err:
+                            logging.error(f"Failed to write memory for {tool.name}: {mem_err}")
+
             except Exception as e:
                 logging.error(f"Tool {tool.name} failed: {e}")
                 result_str = f"Error: {e}"
@@ -194,43 +209,68 @@ async def observe_node(state: AgentState, config: RunnableConfig):
         "finish_reason": finish_reason
     }
 
-async def reflect_node(state: AgentState):
-    # Summarize working memory if too large
-    return state
-
-def build_graph():
-    workflow = StateGraph(AgentState)
-
-    workflow.add_node("Perceive", perceive_node)
-    workflow.add_node("Plan", plan_node)
-    workflow.add_node("Act", act_node)
-    workflow.add_node("Observe", observe_node)
-    workflow.add_node("Reflect", reflect_node)
-
-    workflow.set_entry_point("Perceive")
-    workflow.add_edge("Perceive", "Plan")
-    workflow.add_edge("Plan", "Act")
-
-    def should_observe(state: AgentState) -> str:
-        if state.get("finish_reason") == "tool_calls":
-            return "Observe"
-        return "Reflect"
-        
-    def should_act(state: AgentState) -> str:
-        if state.get("finish_reason") == "approval_required":
-            return "Reflect"
-        return "Act"
-
-    workflow.add_conditional_edges("Act", should_observe, {
-        "Observe": "Observe",
-        "Reflect": "Reflect"
-    })
-
-    workflow.add_conditional_edges("Observe", should_act, {
-        "Act": "Act",
-        "Reflect": "Reflect"
+async def recovery_node(state: AgentState, config: RunnableConfig):
+    runner = config["configurable"]["runner"]
+    queue = config["configurable"]["queue"]
+    
+    error_msg = "Error: Milo has exceeded the maximum iteration limit and stalled. Execution halted."
+    ai_msg = AIMessage(content=error_msg)
+    runner.thread_memory.save_message("assistant", error_msg)
+    
+    await queue.put({
+        "type": "error",
+        "error": error_msg
     })
     
-    workflow.add_edge("Reflect", END)
+    return {"messages": [ai_msg], "finish_reason": "max_turns"}
 
-    return workflow.compile()
+async def approval_interrupt_node(state: AgentState, config: RunnableConfig):
+    from langgraph.types import interrupt
+    human_response = interrupt("Waiting for structured approval response...")
+    
+    decision_msg = HumanMessage(content=f"Approval Decision Received:\nStatus: {human_response.get('status')}\nNotes: {human_response.get('notes')}")
+    
+    return {
+        "messages": [decision_msg],
+        "finish_reason": None
+    }
+
+def build_graph(checkpointer=None):
+    workflow = StateGraph(AgentState)
+
+    workflow.add_node("milo_agent", milo_agent)
+    workflow.add_node("tools", tools)
+    workflow.add_node("approval_interrupt", approval_interrupt_node)
+    workflow.add_node("recovery", recovery_node)
+
+    workflow.set_entry_point("milo_agent")
+
+    def should_continue_from_agent(state: AgentState) -> str:
+        if state.get("finish_reason") == "approval_required":
+            return END
+        if state.get("iterations", 0) > 50:
+            return "recovery"
+        if state.get("finish_reason") == "tool_calls":
+            return "tools"
+        return END
+
+    def should_continue_from_tools(state: AgentState) -> str:
+        if state.get("finish_reason") == "interrupt_requested":
+            return "approval_interrupt"
+        return "milo_agent"
+
+    workflow.add_conditional_edges("milo_agent", should_continue_from_agent, {
+        "tools": "tools",
+        "recovery": "recovery",
+        END: END
+    })
+
+    workflow.add_conditional_edges("tools", should_continue_from_tools, {
+        "approval_interrupt": "approval_interrupt",
+        "milo_agent": "milo_agent"
+    })
+
+    workflow.add_edge("approval_interrupt", "milo_agent")
+    workflow.add_edge("recovery", END)
+
+    return workflow.compile(checkpointer=checkpointer)
