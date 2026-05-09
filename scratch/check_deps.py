@@ -37,8 +37,10 @@ def check_dependencies():
                     if dep in items_by_id:
                         dep_id = dep
                     else:
+                        def normalize(s):
+                            return s.strip().lower().replace("—", "-").replace("–", "-")
                         for aid in relevant_ids:
-                            if items_by_id[aid].name == dep:
+                            if normalize(items_by_id[aid].name).startswith(normalize(dep)):
                                 dep_id = aid
                                 break
                     if dep_id and dep_id in relevant_ids:
@@ -72,6 +74,12 @@ def check_dependencies():
         for node in topo_order:
             float_val = ls[node] - es[node]
             item_type = items_by_id[node].item_type if node in items_by_id else "unknown"
+            
+            # Validation assertion for negative float
+            if float_val < 0 and program_item and program_item.due_date and items_by_id[node].due_date:
+                if items_by_id[node].due_date <= program_item.due_date:
+                    raise ValueError(f"Negative float {float_val} on {items_by_id[node].name} but due date is within program window")
+                    
             if float_val <= 0 and item_type in ("milestone", "phase-gate"):
                 print(f"CRITICAL: {graph.nodes[node]['name']} (Type: {item_type}, Float: {float_val})")
             elif "Phase" in graph.nodes[node]['name']:

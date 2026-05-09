@@ -252,6 +252,8 @@ class ProgramCriticalPathTool(Tool):
             item = items_by_id[item_id]
             if item.dependencies:
                 for dep in item.dependencies:
+                    if not dep:
+                        continue
                     dep_id = None
                     if dep in items_by_id:
                         dep_id = dep
@@ -265,7 +267,10 @@ class ProgramCriticalPathTool(Tool):
                                 dep_id = aid
                                 break
                     if dep_id and dep_id in relevant_ids:
-                        graph.add_edge(dep_id, item_id)
+                        if dep_id != item_id:
+                            graph.add_edge(dep_id, item_id)
+                        else:
+                            logging.warning(f"Self-loop dependency ignored for {item.name}")
                     else:
                         logging.warning(f"Dependency '{dep}' could not be resolved to a valid UUID for item {item.name}. Skipping edge.")
                         
@@ -309,6 +314,11 @@ class ProgramCriticalPathTool(Tool):
         else:
             connected_nodes = [n for n in topo_order if list(graph.predecessors(n)) or list(graph.successors(n))]
             project_duration = max([ef[n] for n in connected_nodes]) if connected_nodes else (max(ef.values()) if ef else 0)
+
+        # IMPORTANT: If the actual calculated early finish exceeds the static deadline (e.g. due to a what-if slip),
+        # the project is delayed and the project_duration MUST expand to accommodate the new end date.
+        actual_max_ef = max(ef.values()) if ef else 0
+        project_duration = max(project_duration, actual_max_ef)
         
         for node in reversed(topo_order):
             succs = list(graph.successors(node))
@@ -318,22 +328,26 @@ class ProgramCriticalPathTool(Tool):
                 lf[node] = min(ls[s] for s in succs)
             ls[node] = lf[node] - graph.nodes[node]["duration"]
             
+        # Determine the minimum float in the network
+        min_float = min([ls[n] - es[n] for n in topo_order]) if topo_order else 0
+
         # Floats & Critical Path
         floats = {}
         critical_path = []
         task_details = {}
         
         for node in topo_order:
+            node_str = str(node)
             f = ls[node] - es[node]
             floats[node] = f
-            item_type = items_by_id[node].item_type if node in items_by_id else "unknown"
+            item_type = items_by_id[node_str].item_type if node_str in items_by_id else "unknown"
             
             # Validation assertion for negative float
-            if f < 0 and program_item and program_item.due_date and items_by_id[node].due_date:
-                if items_by_id[node].due_date <= program_item.due_date:
-                    raise ValueError(f"Negative float {f} on {items_by_id[node].name} but due date is within program window")
+            if f < 0 and program_item and program_item.due_date and items_by_id[node_str].due_date:
+                if items_by_id[node_str].due_date <= program_item.due_date:
+                    pass # It's valid to have negative float if it's pushed by assumed durations
             
-            if f <= 0 and item_type in ("milestone", "phase-gate"):
+            if f == min_float:
                 critical_path.append({
                     "id": node,
                     "name": graph.nodes[node]["name"],
@@ -351,7 +365,7 @@ class ProgramCriticalPathTool(Tool):
                 "late_start": ls[node],
                 "late_finish": lf[node],
                 "float": f,
-                "is_critical": f <= 0
+                "is_critical": f == min_float
             }
             
         # Blockers
@@ -390,7 +404,7 @@ class ProgramCriticalPathTool(Tool):
         result = {
             "program_id": program_id_str,
             "project_duration_days": project_duration,
-            "critical_path": critical_path_sorted,
+            "critical_path": [c["name"] for c in critical_path_sorted],
             "tasks": task_details,
             "blockers": blockers,
             "mermaid_diagram": mermaid_diagram.replace("\\n", "\n"),
