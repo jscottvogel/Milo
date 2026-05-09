@@ -263,8 +263,12 @@ class ProgramCriticalPathTool(Tool):
                             return s.strip().lower().replace("—", "-").replace("–", "-")
                         for aid in relevant_ids:
                             # Use startswith to match 'Phase 2 Complete' against 'Phase 2 Complete - Cognito...'
-                            if normalize(items_by_id[aid].name).startswith(normalize(dep)):
+                            # Also check if the dependency string is in the node name
+                            aid_name = normalize(items_by_id[aid].name)
+                            dep_norm = normalize(dep)
+                            if aid_name.startswith(dep_norm) or dep_norm in aid_name:
                                 dep_id = aid
+                                logging.info(f"RESOLVER MATCH: '{dep}' resolved to UUID {aid} ({items_by_id[aid].name})")
                                 break
                     if dep_id and dep_id in relevant_ids:
                         if dep_id != item_id:
@@ -272,7 +276,7 @@ class ProgramCriticalPathTool(Tool):
                         else:
                             logging.warning(f"Self-loop dependency ignored for {item.name}")
                     else:
-                        logging.warning(f"Dependency '{dep}' could not be resolved to a valid UUID for item {item.name}. Skipping edge.")
+                        logging.warning(f"RESOLVER MISS: Dependency '{dep}' could not be resolved for item {item.name}. Skipping edge.")
                         
         # Check for cycles
         try:
@@ -320,10 +324,16 @@ class ProgramCriticalPathTool(Tool):
         actual_max_ef = max(ef.values()) if ef else 0
         project_duration = max(project_duration, actual_max_ef)
         
+        # Backward pass
+        ls = {}
+        lf = {}
         for node in reversed(topo_order):
             succs = list(graph.successors(node))
             if not succs:
-                lf[node] = project_duration
+                # Terminal nodes anchor to their own Early Finish to ensure independent 
+                # paths compute critical paths accurately without inheriting artificial float 
+                # from a global program due date.
+                lf[node] = ef[node]
             else:
                 lf[node] = min(ls[s] for s in succs)
             ls[node] = lf[node] - graph.nodes[node]["duration"]
@@ -347,7 +357,10 @@ class ProgramCriticalPathTool(Tool):
                 if items_by_id[node_str].due_date <= program_item.due_date:
                     pass # It's valid to have negative float if it's pushed by assumed durations
             
-            if f == min_float:
+            # Determine if node is critical (float == 0)
+            is_crit = (f == 0)
+            
+            if is_crit and item_type in ("milestone", "phase-gate"):
                 critical_path.append({
                     "id": node,
                     "name": graph.nodes[node]["name"],
@@ -365,7 +378,7 @@ class ProgramCriticalPathTool(Tool):
                 "late_start": ls[node],
                 "late_finish": lf[node],
                 "float": f,
-                "is_critical": f == min_float
+                "is_critical": is_crit
             }
             
         # Blockers
