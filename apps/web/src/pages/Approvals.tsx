@@ -1,121 +1,119 @@
-import { useEffect, useState } from 'react';
-import { Check, X, Clock, ShieldAlert, FileJson } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 
+// Types
 interface Approval {
   id: string;
-  tool_name: string;
-  payload: any;
-  status: 'pending' | 'approved' | 'rejected' | 'expired';
-  expires_at: string;
+  title: string;
+  status: string;
+  due_by?: string;
+  requested_by?: string;
+  description?: string;
+  options?: string[];
 }
 
-export function Approvals() {
+export const ApprovalsQueue: React.FC = () => {
   const [approvals, setApprovals] = useState<Approval[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [selectedApproval, setSelectedApproval] = useState<Approval | null>(null);
+  const [notes, setNotes] = useState('');
 
   const fetchApprovals = async () => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const res = await fetch(`${API_URL}/v1/approvals?status=pending`, {
-        headers: {
-          'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
-        }
-      });
+      // In a real app, you'd attach the tenant JWT auth token here
+      const res = await fetch('/v1/approvals'); 
       if (res.ok) {
         const data = await res.json();
-        setApprovals(data);
+        // Sort by due_by ASC
+        const pending = (data.approvals || []).filter((a: Approval) => a.status === 'pending');
+        pending.sort((a: Approval, b: Approval) => {
+          if (!a.due_by) return 1;
+          if (!b.due_by) return -1;
+          return new Date(a.due_by).getTime() - new Date(b.due_by).getTime();
+        });
+        setApprovals(pending);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error('Failed to fetch approvals', err);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchApprovals();
+    // Poll every 15 seconds for real-time updates
+    const interval = setInterval(fetchApprovals, 15000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleDecision = async (id: string, decision: 'approve' | 'reject') => {
-    // Optimistic update
-    setApprovals(prev => prev.filter(a => a.id !== id));
-    
+  const handleDecision = async (approvalId: string, decision: string) => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      await fetch(`${API_URL}/v1/approvals/${id}/decide`, {
+      const res = await fetch(`/v1/approvals/${approvalId}/respond`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
-        },
-        body: JSON.stringify({ decision })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision,
+          notes,
+          decided_by: 'current_user@example.com' // Should be pulled from context
+        })
       });
-    } catch (e) {
-      console.error(e);
-      // Revert if failed (omitted for brevity)
+      
+      if (res.ok) {
+        setSelectedApproval(null);
+        setNotes('');
+        fetchApprovals();
+      } else {
+        alert('Failed to submit decision.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error submitting decision.');
     }
   };
 
-  if (isLoading) {
-    return <div className="flex h-full items-center justify-center text-muted-foreground z-10">Loading queue...</div>;
-  }
+  if (loading) return <div className="p-4">Loading Approvals Queue...</div>;
 
   return (
-    <div className="flex flex-col h-full w-full max-w-5xl mx-auto p-8 z-10 overflow-y-auto scrollbar-hide">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
-          <ShieldAlert className="text-primary" size={32} />
-          Action Queue
-        </h2>
-        <p className="text-muted-foreground mt-2">Review and authorize pending agent actions requiring human-in-the-loop governance.</p>
-      </div>
-
+    <div className="max-w-4xl mx-auto p-4 sm:p-6">
+      <h1 className="text-2xl font-bold mb-6">Approvals Queue</h1>
+      
       {approvals.length === 0 ? (
-        <div className="flex flex-col items-center justify-center flex-1 glass-card border-dashed p-12 text-center animate-fade-in">
-          <Check className="w-16 h-16 text-muted-foreground/30 mb-4" />
-          <h3 className="text-xl font-medium text-white">All caught up</h3>
-          <p className="text-muted-foreground mt-2 max-w-sm">There are no pending actions requiring your authorization at this time.</p>
-        </div>
+        <div className="text-gray-500">No pending approvals.</div>
       ) : (
-        <div className="space-y-6">
-          {approvals.map((approval) => (
-            <div key={approval.id} className="glass-card p-6 animate-slide-up flex flex-col md:flex-row gap-6 relative overflow-hidden group">
-              <div className="absolute top-0 left-0 w-1 h-full bg-amber-500/50 group-hover:bg-amber-500 transition-colors" />
-              
-              <div className="flex-1 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 bg-surface border border-white/10 rounded-full text-xs font-mono text-primary flex items-center gap-2 shadow-sm">
-                      <FileJson size={14} />
-                      {approval.tool_name}
-                    </span>
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Clock size={14} />
-                      Expires: {new Date(approval.expires_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="bg-black/50 border border-white/10 rounded-xl p-4 overflow-x-auto">
-                  <pre className="text-sm font-mono text-gray-300">
-                    {JSON.stringify(approval.payload, null, 2)}
-                  </pre>
-                </div>
+        <div className="flex flex-col gap-4">
+          {approvals.map(approval => (
+            <div 
+              key={approval.id} 
+              className="bg-white border rounded-lg shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => setSelectedApproval(approval)}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="font-semibold text-lg">{approval.title}</h3>
+                <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full uppercase font-bold">
+                  {approval.status}
+                </span>
               </div>
-
-              <div className="flex flex-row md:flex-col gap-3 justify-center md:min-w-[140px]">
-                <button
+              <div className="text-sm text-gray-600 mb-4 flex flex-col sm:flex-row sm:gap-4">
+                <span><strong>Requested By:</strong> {approval.requested_by || 'Milo'}</span>
+                {approval.due_by && (
+                  <span className="text-red-600">
+                    <strong>Due:</strong> {new Date(approval.due_by).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              
+              {/* Quick Actions (Mobile friendly) */}
+              <div className="flex flex-wrap gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                <button 
                   onClick={() => handleDecision(approval.id, 'approve')}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-primary hover:bg-primary-hover text-white font-medium transition-all shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:shadow-[0_0_20px_rgba(59,130,246,0.5)]"
+                  className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
                 >
-                  <Check size={18} />
                   Approve
                 </button>
-                <button
+                <button 
                   onClick={() => handleDecision(approval.id, 'reject')}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-surface hover:bg-white/10 border border-white/10 text-white font-medium transition-all"
+                  className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
                 >
-                  <X size={18} />
                   Reject
                 </button>
               </div>
@@ -123,6 +121,55 @@ export function Approvals() {
           ))}
         </div>
       )}
+
+      {/* Modal */}
+      {selectedApproval && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">{selectedApproval.title}</h2>
+            
+            <div className="bg-gray-50 p-4 rounded mb-4 text-sm whitespace-pre-wrap">
+              {selectedApproval.description || 'No description provided.'}
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Notes / Instructions (Optional)</label>
+              <textarea 
+                className="w-full border rounded p-2 text-sm"
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add context to your decision..."
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button 
+                onClick={() => setSelectedApproval(null)}
+                className="px-4 py-2 border rounded hover:bg-gray-100"
+              >
+                Close
+              </button>
+              {(selectedApproval.options || ['approve', 'reject', 'delegate', 'defer']).map(opt => (
+                <button 
+                  key={opt}
+                  onClick={() => handleDecision(selectedApproval.id, opt)}
+                  className={`px-4 py-2 rounded text-white capitalize ${
+                    opt === 'approve' ? 'bg-green-600 hover:bg-green-700' :
+                    opt === 'reject' ? 'bg-red-600 hover:bg-red-700' :
+                    opt === 'delegate' ? 'bg-blue-600 hover:bg-blue-700' :
+                    'bg-gray-600 hover:bg-gray-700'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default ApprovalsQueue;

@@ -113,16 +113,38 @@ class WorkItemUpdateTool(Tool):
             if not entity:
                 raise ValueError(f"{entity_type} with ID {entity_id_str} not found.")
         else:
-            entity = EntityClass(tenant_id=uuid.UUID(context.tenant_id))
+            # Idempotent Upsert Logic: Check if entity already exists
+            parent_uuid = uuid.UUID(parent_id_str) if parent_id_str else None
+            stmt = select(EntityClass).where(EntityClass.tenant_id == uuid.UUID(context.tenant_id))
+            
             if is_work_item:
-                entity.item_type = entity_type
-                if parent_id_str:
-                    entity.parent_id = uuid.UUID(parent_id_str)
+                stmt = stmt.where(
+                    EntityClass.item_type == entity_type,
+                    EntityClass.name == payload.get("name", ""),
+                    EntityClass.parent_id == parent_uuid
+                )
             else:
-                if not parent_id_str:
-                    raise ValueError(f"parent_id (work_item_id) is required when creating a {entity_type}.")
-                entity.work_item_id = uuid.UUID(parent_id_str)
-            context.session.add(entity)
+                stmt = stmt.where(EntityClass.work_item_id == parent_uuid)
+                if entity_type in ["risk", "decision", "change_request"]:
+                    stmt = stmt.where(EntityClass.title == payload.get("title", ""))
+                elif entity_type == "stakeholder":
+                    stmt = stmt.where(EntityClass.name == payload.get("name", ""))
+                elif entity_type == "action_item":
+                    stmt = stmt.where(EntityClass.description == payload.get("description", ""))
+
+            existing_entity = context.session.scalar(stmt)
+            if existing_entity:
+                entity = existing_entity
+            else:
+                entity = EntityClass(tenant_id=uuid.UUID(context.tenant_id))
+                if is_work_item:
+                    entity.item_type = entity_type
+                    entity.parent_id = parent_uuid
+                else:
+                    if not parent_id_str:
+                        raise ValueError(f"parent_id (work_item_id) is required when creating a {entity_type}.")
+                    entity.work_item_id = parent_uuid
+                context.session.add(entity)
 
         # Handle date parsing and dependencies
         for key, value in payload.items():
@@ -141,6 +163,13 @@ class WorkItemUpdateTool(Tool):
                     if dep:
                         dep_ids.append(str(dep.id))
                 setattr(entity, key, dep_ids)
+            elif key == "metadata_json" and isinstance(value, dict):
+                # Merge metadata to preserve existing fields like source_document
+                existing_meta = getattr(entity, "metadata_json", {}) or {}
+                # Create a new dict to ensure SQLAlchemy detects the change
+                new_meta = dict(existing_meta)
+                new_meta.update(value)
+                setattr(entity, "metadata_json", new_meta)
             elif hasattr(entity, key):
                 setattr(entity, key, value)
 

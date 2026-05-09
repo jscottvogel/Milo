@@ -65,4 +65,35 @@ class DeveloperHandoffTool(Tool):
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
             
+        # AUTO-ISSUE CREATION HOOK (Priority Feature)
+        # We need to fetch the tenant's configured GitHub org/repo and default assignee.
+        # Since we don't have the exact TenantSettings table definition here, we'll
+        # extract it from context or use a placeholder based on tenant id.
+        import httpx
+        
+        # In a real implementation, this would look up from a tenant_settings table
+        repo = context.integration_tokens.get("github_default_repo", "owner/repo") 
+        assignee = context.integration_tokens.get("github_default_assignee")
+        
+        try:
+            mcp_url = "http://localhost:8000/services/mcp/github/create_issue"
+            payload = {
+                "repo": repo,
+                "title": title,
+                "body": content,
+                "labels": ["milo-handoff"]
+            }
+            if assignee:
+                payload["assignees"] = [assignee]
+                
+            # Fire and forget or await the HTTP call to the MCP server
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(mcp_url, json=payload, timeout=10.0)
+                if resp.status_code not in (200, 201):
+                    import logging
+                    logging.getLogger(__name__).error(f"Failed to create GitHub issue: {resp.text}")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error calling GitHub MCP for issue creation: {e}")
+            
         return DeveloperHandoffOutput(file_path=str(file_path)).model_dump()

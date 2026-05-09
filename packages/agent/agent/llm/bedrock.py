@@ -42,6 +42,7 @@ class BedrockClient:
         # Retry config for ThrottlingException
         self.boto_config = Config(
             region_name=self.region,
+            read_timeout=300, # Increased timeout for long-running LLM streams
             retries={"max_attempts": 0} # We handle retries via tenacity
         )
         self.client = boto3.client("bedrock-runtime", config=self.boto_config)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Target, Activity, CheckCircle2, CircleDashed, Rocket, Loader2, Play, CalendarClock, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { clsx } from 'clsx';
 
 interface DashboardData {
   root_items: any[];
@@ -12,6 +13,8 @@ interface DashboardData {
 export function Programs() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const navigate = useNavigate();
 
   const fetchDashboard = async () => {
@@ -25,6 +28,16 @@ export function Programs() {
       if (res.ok) {
         const json = await res.json();
         setData(json);
+      }
+      
+      const valRes = await fetch(`${API_URL}/v1/work_items/validation-errors`, {
+        headers: {
+          'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
+        }
+      });
+      if (valRes.ok) {
+        const valJson = await valRes.json();
+        setValidationErrors(valJson.errors || []);
       }
     } catch (e) {
       console.error('Failed to fetch dashboard:', e);
@@ -77,11 +90,39 @@ export function Programs() {
           </h2>
           <p className="text-muted-foreground mt-2">Workspace overview, strategic objectives, and critical items needing attention.</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl transition-colors font-medium shadow-lg shadow-primary/20">
-          <Rocket size={18} />
-          New Objective
-        </button>
+        <div className="flex gap-3">
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground hover:text-white transition-colors mr-4">
+            <input 
+              type="checkbox" 
+              checked={showArchived} 
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="rounded border-white/20 bg-black/50 text-primary focus:ring-primary focus:ring-offset-0"
+            />
+            Show Archived
+          </label>
+          <button className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl transition-colors font-medium shadow-lg shadow-primary/20">
+            <Rocket size={18} />
+            New Objective
+          </button>
+        </div>
       </div>
+
+      {validationErrors.length > 0 && (
+        <div className="mb-6 bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 flex items-start gap-3 animate-fade-in">
+          <AlertTriangle className="text-rose-400 shrink-0 mt-0.5" size={20} />
+          <div>
+            <h4 className="text-rose-400 font-semibold mb-1">⚠️ {validationErrors.length} hierarchy violations detected</h4>
+            <ul className="list-disc list-inside text-sm text-rose-300/80 space-y-1">
+              {validationErrors.slice(0, 3).map((err, idx) => (
+                <li key={idx}>{err}</li>
+              ))}
+              {validationErrors.length > 3 && (
+                <li className="italic text-rose-400/60 mt-1">...and {validationErrors.length - 3} more. Check reconciliation log.</li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         
@@ -99,11 +140,14 @@ export function Programs() {
             </div>
           ) : (
             <div className="space-y-6">
-              {root_items.map((item) => (
+              {root_items.filter(i => showArchived || i.status !== 'archived').map((item) => (
                 <div 
                   key={item.id} 
                   onClick={() => navigate(`/programs/${item.id}`)}
-                  className="glass-card p-6 animate-slide-up flex flex-col relative overflow-hidden group hover:border-white/20 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)] cursor-pointer"
+                  className={clsx(
+                    "glass-card p-6 animate-slide-up flex flex-col relative overflow-hidden group hover:border-white/20 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)] cursor-pointer",
+                    item.status === 'archived' && "opacity-60 grayscale"
+                  )}
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div>
@@ -112,7 +156,7 @@ export function Programs() {
                             {item.item_type}
                          </span>
                       </div>
-                      <h3 className="text-2xl font-bold text-white group-hover:text-primary transition-colors">{item.name}</h3>
+                      <h3 className={clsx("text-2xl font-bold transition-colors", item.status === 'archived' ? 'text-gray-400 line-through' : 'text-white group-hover:text-primary')}>{item.name}</h3>
                       {item.description && (
                         <p className="text-sm text-gray-400 mt-2 line-clamp-2 max-w-2xl">{item.description}</p>
                       )}
@@ -122,7 +166,6 @@ export function Programs() {
                       <span className="text-xs font-semibold text-gray-200 capitalize">{item.status}</span>
                     </div>
                   </div>
-                  {/* Empty state for the old OKRs space just to keep layout nice */}
                   <div className="pt-2 flex items-center text-sm text-primary group-hover:text-primary-hover font-medium transition-colors">
                       View Hierarchy <ArrowRight size={14} className="ml-1" />
                   </div>
@@ -147,13 +190,13 @@ export function Programs() {
                </div>
              ) : (
                <div className="space-y-3">
-                 {high_risks.map((risk: any) => (
-                   <div key={risk.id} className="glass-card p-4 border-l-2 border-l-rose-500/50 flex flex-col gap-2">
+                 {high_risks.filter(r => showArchived || r.status !== 'archived').map((risk: any) => (
+                   <div key={risk.id} className={clsx("glass-card p-4 border-l-2 flex flex-col gap-2", risk.status === 'archived' ? "border-l-gray-500/50 opacity-60" : "border-l-rose-500/50")}>
                      <div className="flex items-start justify-between">
                        <span className="text-xs font-medium text-rose-300/80 uppercase tracking-wider">{risk.program_name}</span>
                        <span className="text-xs bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded">{risk.status}</span>
                      </div>
-                     <p className="text-sm font-medium text-white">{risk.title}</p>
+                     <p className={clsx("text-sm font-medium", risk.status === 'archived' ? 'text-gray-400 line-through' : 'text-white')}>{risk.title}</p>
                      <div className="flex gap-4 text-xs text-muted-foreground mt-1">
                         <span>Impact: <strong className="text-rose-400">{risk.impact}/5</strong></span>
                         <span>Likelihood: <strong className="text-rose-400">{risk.likelihood}/5</strong></span>
@@ -175,8 +218,8 @@ export function Programs() {
                </div>
              ) : (
                <div className="space-y-3">
-                 {next_up.map((task: any) => (
-                   <div key={task.id} className="glass-card p-4 hover:border-blue-500/30 transition-colors group">
+                 {next_up.filter(t => showArchived || t.status !== 'archived').map((task: any) => (
+                   <div key={task.id} className={clsx("glass-card p-4 transition-colors group", task.status === 'archived' ? "opacity-60" : "hover:border-blue-500/30")}>
                      <div className="flex items-start justify-between mb-1">
                        <span className="text-xs font-medium text-blue-300/80 uppercase tracking-wider line-clamp-1">{task.program_name}</span>
                        {task.due_date && (
@@ -185,12 +228,12 @@ export function Programs() {
                          </span>
                        )}
                      </div>
-                     <p className="text-sm font-medium text-white group-hover:text-blue-100 transition-colors">{task.title}</p>
+                     <p className={clsx("text-sm font-medium transition-colors", task.status === 'archived' ? 'text-gray-400 line-through' : 'text-white group-hover:text-blue-100')}>{task.title}</p>
                      {task.owner_name && (
                        <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
-                         <div className="w-4 h-4 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[8px] font-bold text-white shadow-lg shrink-0">
+                         <span className="w-4 h-4 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[8px] font-bold text-white shadow-lg shrink-0">
                            {task.owner_name.charAt(0).toUpperCase()}
-                         </div>
+                         </span>
                          {task.owner_name}
                        </p>
                      )}

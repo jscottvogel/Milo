@@ -1,0 +1,16 @@
+rules:
+  - id: unread_email_escalation
+    description: "An email from a known stakeholder has been unread for > 24 hours"
+    trigger_action: "Milo drafts a summary and sends an alert to the tenant owner"
+    
+  - id: overdue_task_alert
+    description: "A work item task has a due_date in the past and status != complete"
+    trigger_action: "Milo sends an email alert listing all overdue items with owners"
+    
+  - id: upcoming_milestone_warning
+    description: "A milestone is due within 7 days and status != complete"
+    trigger_action: "Milo sends a milestone warning email to the tenant owner"
+    
+  - id: stale_program_warning
+    description: "No work item has been updated in > 7 days"
+    trigger_action: "Milo sends a 'program health check' nudge to the tenant owner"

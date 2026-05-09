@@ -16,7 +16,7 @@ from app.middleware.error_handler import (
 )
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.tenant_context import TenantContextMiddleware
-from app.routers import health, tenants, threads, users, approvals, milos, programs, integrations, billing, webhooks
+from app.routers import health, tenants, threads, users, approvals, milos, programs, integrations, billing, webhooks, files
 
 if os.getenv("SENTRY_DSN"):
     sentry_sdk.init(
@@ -25,12 +25,24 @@ if os.getenv("SENTRY_DSN"):
         profiles_sample_rate=1.0,
     )
 
+from contextlib import asynccontextmanager
+from app.scheduler import start_scheduler, stop_scheduler
+from agent.tools.temp_manager import TempFileManager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    TempFileManager.setup()
+    start_scheduler()
+    yield
+    stop_scheduler()
+
 app = FastAPI(
     title="Milo API",
     version="0.1.0",
     description="Milo Platform API",
     openapi_url="/openapi.json",
     docs_url="/docs",
+    lifespan=lifespan,
 )
 
 # Middlewares (order matters: last added is outermost)
@@ -66,3 +78,4 @@ app.include_router(programs.router)
 app.include_router(integrations.router)
 app.include_router(billing.router)
 app.include_router(webhooks.router)
+app.include_router(files.router)

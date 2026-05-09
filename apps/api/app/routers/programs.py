@@ -7,6 +7,14 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from db.models.program import WorkItem, Risk, Decision, ChangeRequest, Stakeholder, Commitment
+from fastapi import BackgroundTasks
+import asyncio
+import json
+import boto3
+import os
+from sqlalchemy import create_engine
+from agent.tools.registry import registry
+from agent.tools.context import AgentContext
 
 router = APIRouter(prefix="/v1/work_items", tags=["work_items"])
 
@@ -242,6 +250,56 @@ def get_full_tree(request: Request):
     
     return build_tree(all_items, None, all_risks, all_crs, all_decisions, all_stakeholders, all_action_items)
 
+@router.get("/validation-errors")
+def get_validation_errors(request: Request):
+    context = getattr(request.state, "auth_context", None)
+    if not context:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+        
+    db = getattr(request.state, "db", None)
+    if not db:
+        raise HTTPException(status_code=500, detail="Database session missing")
+        
+    tenant_id = uuid.UUID(context.tenant_id)
+    items = db.scalars(select(WorkItem).where(WorkItem.tenant_id == tenant_id, WorkItem.status != 'archived')).all()
+    risks = db.scalars(select(Risk).where(Risk.tenant_id == tenant_id, Risk.status != 'archived')).all()
+    decisions = db.scalars(select(Decision).where(Decision.tenant_id == tenant_id)).all()
+    
+    id_to_type = {str(i.id): i.item_type for i in items}
+    
+    errors = []
+    
+    for i in items:
+        p_type = id_to_type.get(str(i.parent_id)) if i.parent_id else None
+        
+        if i.item_type in ["key_result", "initiative"]:
+            if p_type not in ["outcome", "objective"]:
+                errors.append(f"Linkage Error: {i.item_type} '{i.name}' has parent of type {p_type} (expected outcome or objective)")
+        elif i.item_type == "project":
+            if p_type != "initiative":
+                errors.append(f"Linkage Error: project '{i.name}' has parent of type {p_type} (expected initiative)")
+        elif i.item_type == "workstream":
+            if p_type not in ["project", "initiative"]:
+                errors.append(f"Linkage Error: workstream '{i.name}' has parent of type {p_type} (expected project or initiative)")
+        elif i.item_type == "milestone":
+            if p_type not in ["workstream", "project"]:
+                errors.append(f"Linkage Error: milestone '{i.name}' has parent of type {p_type} (expected workstream or project)")
+        elif i.item_type == "task":
+            if p_type not in ["milestone", "workstream"]:
+                errors.append(f"Linkage Error: task '{i.name}' has parent of type {p_type} (expected milestone or workstream)")
+                
+    for r in risks:
+        p_type = id_to_type.get(str(r.work_item_id)) if r.work_item_id else None
+        if p_type not in ["project", "initiative"]:
+            errors.append(f"Linkage Error: risk '{r.title}' has parent of type {p_type} (expected project or initiative)")
+            
+    for d in decisions:
+        p_type = id_to_type.get(str(d.work_item_id)) if d.work_item_id else None
+        if p_type not in ["project", "initiative"]:
+            errors.append(f"Linkage Error: decision '{d.title}' has parent of type {p_type} (expected project or initiative)")
+
+    return {"errors": errors}
+
 @router.get("/{item_id}", response_model=WorkItemTreeResponse)
 def get_work_item_details(request: Request, item_id: str):
     context = getattr(request.state, "auth_context", None)
@@ -421,19 +479,304 @@ def get_upload_url(request: Request, item_id: str, payload: PresignedUrlRequest)
     bucket = os.environ.get("S3_BUCKET_NAME", "milo-artifacts-poc")
     
     import time
-    # Ensure safe filename
     safe_filename = "".join(c for c in payload.filename if c.isalnum() or c in "._- ")
     key = f"{tenant_id}/work_items/{item_id}/{int(time.time())}_{safe_filename}"
     
     s3 = boto3.client('s3')
     url = s3.generate_presigned_url(
         'put_object',
-        Params={
-            'Bucket': bucket,
-            'Key': key,
-            'ContentType': payload.content_type
-        },
+        Params={'Bucket': bucket, 'Key': key, 'ContentType': payload.content_type},
         ExpiresIn=3600
     )
-    
     return PresignedUrlResponse(upload_url=url, key=key)
+
+
+async def run_reconciliation_task(run_id: str, tenant_id: str):
+    bucket = os.environ.get("S3_BUCKET_NAME", "milo-poc-bucket-jsco")
+    s3 = boto3.client("s3")
+    diff_key = f"{tenant_id}/hydration_runs/{run_id}/diff.json"
+    manifest_key = f"{tenant_id}/hydration_runs/{run_id}/manifest.json"
+    log_key = f"{tenant_id}/hydration_runs/{run_id}/reconciliation_log.json"
+    
+    loop = asyncio.get_running_loop()
+    try:
+        diff_obj = await loop.run_in_executor(None, lambda: s3.get_object(Bucket=bucket, Key=diff_key))
+        diff = json.loads(diff_obj['Body'].read())
+        
+        man_obj = await loop.run_in_executor(None, lambda: s3.get_object(Bucket=bucket, Key=manifest_key))
+        manifest = json.loads(man_obj['Body'].read())
+    except Exception as e:
+        return
+        
+    db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/milo")
+    engine = create_engine(db_url)
+    
+    log = {"status": "running", "archived": 0, "reparented": 0, "created": 0}
+    def update_log():
+        s3.put_object(Bucket=bucket, Key=log_key, Body=json.dumps(log))
+        
+    with Session(engine) as db:
+        context = AgentContext(session=db, tenant_id=tenant_id, thread_id="", milo_id="", integration_tokens=[])
+        update_tool = registry.get_tool("work_item.update")
+        
+        # 1. Archive
+        for a in diff.get("to_archive", []):
+            try:
+                await update_tool.invoke({
+                    "entity_type": a["type"],
+                    "entity_id": a["id"],
+                    "payload": {"status": "archived"}
+                }, context)
+                log["archived"] += 1
+            except Exception: pass
+            
+        # 2. Reparent
+        # Re-fetch DB to build name_to_id map for reparenting
+        db_items = db.scalars(select(WorkItem).where(WorkItem.tenant_id == uuid.UUID(tenant_id))).all()
+        name_to_id = {i.name: str(i.id) for i in db_items}
+        
+        for r in diff.get("to_reparent", []):
+            new_p_name = r.get("new_parent")
+            new_p_id = name_to_id.get(new_p_name)
+            if new_p_id:
+                try:
+                    await update_tool.invoke({
+                        "entity_type": r["type"],
+                        "entity_id": r["id"],
+                        "parent_id": new_p_id,
+                        "payload": {}
+                    }, context)
+                    log["reparented"] += 1
+                except Exception: pass
+                
+        # 3. Create missing (batch of 5)
+        layer_order = ["objective", "outcomes", "key_results", "initiatives", "projects", "workstreams", "milestones", "tasks", "risks", "decisions", "stakeholders"]
+        
+        async def process_create(layer, item):
+            parent_name = item.get("parent")
+            parent_id = name_to_id.get(parent_name)
+            
+            entity_type = layer[:-1] if layer.endswith('s') and layer not in ["risks", "decisions", "stakeholders", "outcomes", "key_results", "projects", "workstreams", "milestones", "tasks"] else layer
+            if layer == "objective": entity_type = "objective"
+            elif layer == "outcomes": entity_type = "outcome"
+            elif layer == "key_results": entity_type = "key_result"
+            elif layer == "initiatives": entity_type = "initiative"
+            elif layer == "projects": entity_type = "project"
+            elif layer == "workstreams": entity_type = "workstream"
+            elif layer == "milestones": entity_type = "milestone"
+            elif layer == "tasks": entity_type = "task"
+            elif layer == "risks": entity_type = "risk"
+            elif layer == "decisions": entity_type = "decision"
+            elif layer == "stakeholders": entity_type = "stakeholder"
+            
+            payload = dict(item)
+            payload.pop("parent", None)
+            
+            meta = payload.get("metadata_json", {})
+            if "_meta" in manifest:
+                meta["source_document"] = manifest["_meta"].get("source_document")
+            meta["reconciliation_run_id"] = run_id
+            payload["metadata_json"] = meta
+            
+            try:
+                res = await update_tool.invoke({
+                    "entity_type": entity_type,
+                    "parent_id": parent_id,
+                    "payload": payload
+                }, context)
+                new_id = res["id"] if isinstance(res, dict) else res.id if hasattr(res, "id") else None
+                if new_id:
+                    name_to_id[payload.get("name") or payload.get("title") or payload.get("description")] = new_id
+                log["created"] += 1
+                await loop.run_in_executor(None, update_log)
+            except Exception as e:
+                pass
+
+        to_create = diff.get("to_create", [])
+        for layer in layer_order:
+            # find all items in to_create that belong to this layer
+            # wait, to_create items only have "type", not "layer"
+            layer_items = [c for c in to_create if c["type"] == (
+                "objective" if layer=="objective" else 
+                "outcome" if layer=="outcomes" else 
+                "key_result" if layer=="key_results" else 
+                "initiative" if layer=="initiatives" else 
+                "project" if layer=="projects" else 
+                "workstream" if layer=="workstreams" else 
+                "milestone" if layer=="milestones" else 
+                "task" if layer=="tasks" else 
+                "risk" if layer=="risks" else 
+                "decision" if layer=="decisions" else 
+                "stakeholder" if layer=="stakeholders" else layer
+            )]
+            
+            for i in range(0, len(layer_items), 5):
+                batch = layer_items[i:i+5]
+                # we need the raw payload from manifest
+                raw_items = []
+                for b in batch:
+                    # locate in manifest
+                    man_items = manifest.get(layer, [])
+                    if isinstance(man_items, dict): man_items = [man_items]
+                    raw_item = next((m for m in man_items if (m.get("name") or m.get("title") or m.get("description")) == b["name"]), b)
+                    raw_items.append(raw_item)
+                
+                tasks = [process_create(layer, r) for r in raw_items]
+                await asyncio.gather(*tasks)
+                
+    log["status"] = "completed"
+    await loop.run_in_executor(None, update_log)
+
+@router.post("/reconciliation/{run_id}/execute")
+def execute_reconciliation(request: Request, run_id: str, background_tasks: BackgroundTasks):
+    context = getattr(request.state, "auth_context", None)
+    if not context:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    background_tasks.add_task(run_reconciliation_task, run_id, str(context.tenant_id))
+    return {"status": "started"}
+
+async def run_sequential_hydration(run_id: str, tenant_id: str):
+    bucket = os.environ.get("S3_BUCKET_NAME", "milo-poc-bucket-jsco")
+    s3 = boto3.client("s3")
+    manifest_key = f"{tenant_id}/hydration_runs/{run_id}/manifest.json"
+    status_key = f"{tenant_id}/hydration_runs/{run_id}/status.json"
+    
+    status_data = {
+        "status": "running", "total_attempted": 0, "total_created": 0,
+        "total_failed": 0, "entities": []
+    }
+    
+    def update_status():
+        s3.put_object(Bucket=bucket, Key=status_key, Body=json.dumps(status_data))
+        
+    loop = asyncio.get_running_loop()
+    try:
+        manifest_obj = await loop.run_in_executor(None, lambda: s3.get_object(Bucket=bucket, Key=manifest_key))
+        manifest = json.loads(manifest_obj['Body'].read())
+    except Exception as e:
+        status_data["status"] = "failed"
+        status_data["error"] = f"Failed to load manifest: {e}"
+        await loop.run_in_executor(None, update_status)
+        return
+
+    await loop.run_in_executor(None, update_status)
+    
+    db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/milo")
+    engine = create_engine(db_url)
+    
+    layer_order = ["objective", "outcomes", "key_results", "initiatives", "projects", "workstreams", "milestones", "tasks", "risks", "decisions", "stakeholders"]
+    name_to_id = {}
+    
+    with Session(engine) as db:
+        context = AgentContext(session=db, tenant_id=tenant_id, thread_id="", milo_id="", integration_tokens=[])
+        update_tool = registry.get_tool("work_item.update")
+        if not update_tool:
+            status_data["status"] = "failed"
+            status_data["error"] = "work_item.update tool not found"
+            await loop.run_in_executor(None, update_status)
+            return
+            
+        async def process_entity(layer: str, item: dict):
+            status_data["total_attempted"] += 1
+            entity_record = {
+                "type": layer,
+                "name": item.get("name") or item.get("title") or item.get("description") or "Unnamed",
+                "status": "pending", "attempt_count": 0, "error": None
+            }
+            status_data["entities"].append(entity_record)
+            await loop.run_in_executor(None, update_status)
+            
+            parent_id = None
+            parent_name = item.get("parent")
+            if parent_name and parent_name in name_to_id:
+                parent_id = name_to_id[parent_name]
+                
+            entity_type = layer[:-1] if layer.endswith('s') and layer not in ["risks", "decisions", "stakeholders", "outcomes", "key_results", "projects", "workstreams", "milestones", "tasks"] else layer
+            if layer == "objective": entity_type = "objective"
+            elif layer == "outcomes": entity_type = "outcome"
+            elif layer == "key_results": entity_type = "key_result"
+            elif layer == "initiatives": entity_type = "initiative"
+            elif layer == "projects": entity_type = "project"
+            elif layer == "workstreams": entity_type = "workstream"
+            elif layer == "milestones": entity_type = "milestone"
+            elif layer == "tasks": entity_type = "task"
+            elif layer == "risks": entity_type = "risk"
+            elif layer == "decisions": entity_type = "decision"
+            elif layer == "stakeholders": entity_type = "stakeholder"
+            
+            payload = dict(item)
+            payload.pop("parent", None)
+            
+            meta = payload.get("metadata_json", {})
+            if "_meta" in manifest:
+                meta["source_document"] = manifest["_meta"].get("source_document")
+            meta["hydration_run_id"] = run_id
+            payload["metadata_json"] = meta
+            
+            input_data = {
+                "entity_type": entity_type,
+                "parent_id": parent_id,
+                "payload": payload
+            }
+            
+            for attempt in range(1, 4):
+                entity_record["attempt_count"] = attempt
+                entity_record["status"] = "retrying" if attempt > 1 else "running"
+                await loop.run_in_executor(None, update_status)
+                try:
+                    res = await update_tool.invoke(input_data, context)
+                    if isinstance(res, dict) and "error" in res:
+                        raise Exception(res["error"])
+                    new_id = res["id"] if isinstance(res, dict) else res.id if hasattr(res, "id") else None
+                    if new_id:
+                        name_to_id[entity_record["name"]] = new_id
+                        entity_record["id"] = new_id
+                    entity_record["status"] = "created"
+                    status_data["total_created"] += 1
+                    await loop.run_in_executor(None, update_status)
+                    return
+                except Exception as e:
+                    if attempt == 3:
+                        entity_record["status"] = "failed"
+                        entity_record["error"] = str(e)
+                        status_data["total_failed"] += 1
+                        await loop.run_in_executor(None, update_status)
+                    else:
+                        await asyncio.sleep(1.5 ** attempt)
+                        
+        for layer in layer_order:
+            items = manifest.get(layer, [])
+            if isinstance(items, dict): items = [items]
+            for i in range(0, len(items), 5):
+                batch = items[i:i+5]
+                tasks = [process_entity(layer, item) for item in batch]
+                await asyncio.gather(*tasks)
+                
+    status_data["status"] = "completed"
+    await loop.run_in_executor(None, update_status)
+
+@router.post("/hydration/{run_id}/execute")
+def execute_hydration(request: Request, run_id: str, background_tasks: BackgroundTasks):
+    context = getattr(request.state, "auth_context", None)
+    if not context:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    background_tasks.add_task(run_sequential_hydration, run_id, str(context.tenant_id))
+    return {"status": "started", "run_id": run_id}
+
+@router.get("/hydration/{run_id}/status")
+def get_hydration_status(request: Request, run_id: str):
+    context = getattr(request.state, "auth_context", None)
+    if not context:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    bucket = os.environ.get("S3_BUCKET_NAME", "milo-poc-bucket-jsco")
+    s3 = boto3.client("s3")
+    status_key = f"{context.tenant_id}/hydration_runs/{run_id}/status.json"
+    
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=status_key)
+        return json.loads(obj['Body'].read())
+    except Exception as e:
+        return {"status": "pending", "entities": []}

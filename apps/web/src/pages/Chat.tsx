@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User, Loader2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, Paperclip, X } from 'lucide-react';
 import clsx from 'clsx';
+import { HydrationPanel } from '../components/HydrationPanel';
 
 interface Message {
   id: string;
@@ -16,7 +17,9 @@ export function Chat() {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -26,14 +29,82 @@ export function Chat() {
     scrollToBottom();
   }, [messages]);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setSelectedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+    }
+    // Clear input so same file can be selected again if removed
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && selectedFiles.length === 0) || isLoading) return;
 
-    const userMessage: Message = { id: Date.now().toString(), role: 'user', content: input };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
     setIsLoading(true);
+    let finalContent = input.trim();
+    let uploadedPaths: string[] = [];
+
+    const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const API_URL = RAW_API_URL.endsWith('/') ? RAW_API_URL.slice(0, -1) : RAW_API_URL;
+
+    try {
+      if (selectedFiles.length > 0) {
+        // Duplicate detection
+        for (const file of selectedFiles) {
+          const checkRes = await fetch(`${API_URL}/v1/files/check-duplicate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
+            },
+            body: JSON.stringify({ filename: file.name })
+          });
+          const checkData = await checkRes.json();
+          if (checkData.exists) {
+            if (!window.confirm(`The file "${file.name}" has already been uploaded. Overwrite and re-ingest?`)) {
+              setIsLoading(false);
+              return;
+            }
+          }
+        }
+
+        // Upload
+        const formData = new FormData();
+        selectedFiles.forEach(file => formData.append('files', file));
+
+        const uploadRes = await fetch(`${API_URL}/v1/files/upload`, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
+          },
+          body: formData
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error('Upload failed');
+        }
+
+        const uploadData = await uploadRes.json();
+        uploadedPaths = uploadData.paths || [];
+
+        const systemPrompt = `\n\n[SYSTEM] I have uploaded the following files: ${uploadedPaths.join(", ")}. Please parse them via file.read, extract document type, key facts, decisions, architecture components, and prompts, write them to memory, and give me a summary of what you extracted.`;
+        finalContent += systemPrompt;
+        setSelectedFiles([]);
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      setIsLoading(false);
+      return;
+    }
+
+    const userMessage: Message = { id: Date.now().toString(), role: 'user', content: finalContent };
+    setMessages(prev => [...prev, { ...userMessage, content: input.trim() || `Uploaded ${selectedFiles.length} file(s)` }]);
+    setInput('');
 
     // Mock Thread ID for PoC (Must be a valid UUID)
     const threadId = '123e4567-e89b-12d3-a456-426614174000';
@@ -136,7 +207,20 @@ export function Chat() {
                 <p className="whitespace-pre-wrap">{message.content}</p>
               ) : (
                 <div className="prose prose-invert prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 max-w-none">
-                  <ReactMarkdown>{message.content || '...'}</ReactMarkdown>
+                  <ReactMarkdown>{message.content.replace(/\[HYDRATION_RUN:[^\]]+\]/, '')}</ReactMarkdown>
+                  
+                  {message.content.includes('[HYDRATION_RUN:') && (
+                    <div className="mt-4 mb-2">
+                      {(() => {
+                        const match = message.content.match(/\[HYDRATION_RUN:([^\]]+)\]/);
+                        if (match) {
+                          return <HydrationPanel runId={match[1]} />;
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
+
                   {message.isStreaming && (
                     <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse align-middle"></span>
                   )}
@@ -149,21 +233,50 @@ export function Chat() {
       </div>
 
       <div className="mt-4">
+        {selectedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2 px-2">
+            {selectedFiles.map((f, idx) => (
+              <div key={idx} className="flex items-center gap-1 bg-surface/80 backdrop-blur text-xs px-2 py-1 rounded-full border border-white/10">
+                <Paperclip size={12} className="text-primary" />
+                <span className="truncate max-w-[150px]">{f.name}</span>
+                <button type="button" onClick={() => removeFile(idx)} className="text-muted-foreground hover:text-white ml-1">
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <form 
           onSubmit={handleSubmit} 
           className="relative flex items-center bg-surface/80 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl p-1.5 focus-within:border-primary/50 transition-colors"
         >
           <input
+            type="file"
+            multiple
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".pdf,.docx,.txt,.md,.xlsx,.csv,.pptx,.json,.yaml,.html"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className="flex items-center justify-center w-10 h-10 rounded-full text-muted-foreground hover:text-white hover:bg-white/5 transition-all"
+          >
+            <Paperclip size={20} />
+          </button>
+          <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Message Milo..."
-            className="flex-1 bg-transparent border-none outline-none px-4 py-3 text-white placeholder-muted-foreground"
+            placeholder="Message Milo or attach files..."
+            className="flex-1 bg-transparent border-none outline-none px-2 py-3 text-white placeholder-muted-foreground"
             disabled={isLoading}
           />
           <button 
             type="submit" 
-            disabled={!input.trim() || isLoading}
+            disabled={(!input.trim() && selectedFiles.length === 0) || isLoading}
             className="flex items-center justify-center w-12 h-12 rounded-full bg-primary text-white hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} className="ml-1" />}

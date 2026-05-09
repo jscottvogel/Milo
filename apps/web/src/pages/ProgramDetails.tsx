@@ -24,16 +24,21 @@ function getStatusIcon(status: string) {
   }
 }
 
-function WorkItemNode({ item, depth = 0 }: { item: any, depth?: number }) {
+function WorkItemNode({ item, depth = 0, showArchived = false }: { item: any, depth?: number, showArchived?: boolean }) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const hasChildren = item.children && item.children.length > 0;
+  const children = item.children || [];
+  const visibleChildren = showArchived ? children : children.filter((c: any) => c.status !== 'archived');
+  const hasChildren = visibleChildren.length > 0;
+
+  if (!showArchived && item.status === 'archived') return null;
 
   return (
     <div className="flex flex-col">
       <div 
         className={clsx(
           "flex items-center justify-between p-3 border-b border-white/5 hover:bg-white/5 transition-colors group",
-          depth === 0 ? "bg-black/20" : ""
+          depth === 0 ? "bg-black/20" : "",
+          item.status === 'archived' && "opacity-60 grayscale"
         )}
         style={{ paddingLeft: `${depth * 1.5 + 1}rem` }}
       >
@@ -49,7 +54,7 @@ function WorkItemNode({ item, depth = 0 }: { item: any, depth?: number }) {
              {item.item_type}
           </span>
           <div>
-            <h4 className="font-medium text-white group-hover:text-primary transition-colors cursor-pointer">{item.name}</h4>
+            <h4 className={clsx("font-medium transition-colors cursor-pointer", item.status === 'archived' ? 'text-gray-400 line-through' : 'text-white group-hover:text-primary')}>{item.name}</h4>
             {item.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>}
           </div>
         </div>
@@ -65,8 +70,8 @@ function WorkItemNode({ item, depth = 0 }: { item: any, depth?: number }) {
       
       {isExpanded && hasChildren && (
         <div className="flex flex-col">
-          {item.children.map((child: any) => (
-            <WorkItemNode key={child.id} item={child} depth={depth + 1} />
+          {visibleChildren.map((child: any) => (
+            <WorkItemNode key={child.id} item={child} depth={depth + 1} showArchived={showArchived} />
           ))}
         </div>
       )}
@@ -80,6 +85,8 @@ export function ProgramDetails() {
   const [artifacts, setArtifacts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
+  const [showArchived, setShowArchived] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -106,6 +113,17 @@ export function ProgramDetails() {
         if (artifactsRes.ok) {
           const artifactsData = await artifactsRes.json();
           setArtifacts(artifactsData);
+        }
+        
+        // Fetch Validation Errors
+        const valRes = await fetch(`${API_URL}/v1/work_items/validation-errors`, {
+          headers: {
+            'Authorization': 'Bearer dev_00000000-0000-0000-0000-000000000001'
+          }
+        });
+        if (valRes.ok) {
+          const valJson = await valRes.json();
+          setValidationErrors(valJson.errors || []);
         }
         
       } catch (e) {
@@ -146,19 +164,30 @@ export function ProgramDetails() {
         <Link to="/programs" className="inline-flex items-center gap-2 text-muted-foreground hover:text-white transition-colors w-fit">
           <ArrowLeft size={20} /> Back to Dashboard
         </Link>
-        <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-lg p-1">
-          <button 
-            onClick={() => setViewMode('list')}
-            className={clsx("flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors", viewMode === 'list' ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white hover:bg-white/5")}
-          >
-            <LayoutList size={16} /> List
-          </button>
-          <button 
-            onClick={() => setViewMode('timeline')}
-            className={clsx("flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors", viewMode === 'timeline' ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white hover:bg-white/5")}
-          >
-            <CalendarRange size={16} /> Timeline
-          </button>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground hover:text-white transition-colors">
+            <input 
+              type="checkbox" 
+              checked={showArchived} 
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="rounded border-white/20 bg-black/50 text-primary focus:ring-primary focus:ring-offset-0"
+            />
+            Show Archived
+          </label>
+          <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-lg p-1">
+            <button 
+              onClick={() => setViewMode('list')}
+              className={clsx("flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors", viewMode === 'list' ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white hover:bg-white/5")}
+            >
+              <LayoutList size={16} /> List
+            </button>
+            <button 
+              onClick={() => setViewMode('timeline')}
+              className={clsx("flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors", viewMode === 'timeline' ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white hover:bg-white/5")}
+            >
+              <CalendarRange size={16} /> Timeline
+            </button>
+          </div>
         </div>
       </div>
 
@@ -180,6 +209,23 @@ export function ProgramDetails() {
         </div>
       </div>
 
+      {validationErrors.length > 0 && (
+        <div className="mb-6 bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 flex items-start gap-3 animate-fade-in">
+          <AlertTriangle className="text-rose-400 shrink-0 mt-0.5" size={20} />
+          <div>
+            <h4 className="text-rose-400 font-semibold mb-1">⚠️ {validationErrors.length} hierarchy violations detected</h4>
+            <ul className="list-disc list-inside text-sm text-rose-300/80 space-y-1">
+              {validationErrors.slice(0, 3).map((err, idx) => (
+                <li key={idx}>{err}</li>
+              ))}
+              {validationErrors.length > 3 && (
+                <li className="italic text-rose-400/60 mt-1">...and {validationErrors.length - 3} more.</li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {viewMode === 'timeline' ? (
         <div className="animate-fade-in flex-1">
           <GanttChart program={program} />
@@ -193,7 +239,7 @@ export function ProgramDetails() {
                 <Hash className="text-primary" size={24} /> Hierarchy
               </h3>
               <div className="glass-card overflow-hidden">
-                 <WorkItemNode item={program} depth={0} />
+                 <WorkItemNode item={program} depth={0} showArchived={showArchived} />
               </div>
             </section>
           </div>
