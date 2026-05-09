@@ -181,3 +181,91 @@ class AgentRunner:
             else:
                 yield event
 
+    async def run_autonomous_turn(self, trigger_reason: str) -> None:
+        """Run the agent graph asynchronously without yielding SSE events to a UI client."""
+        import asyncio
+        from agent.graph import build_graph
+        from agent.state import AgentState
+
+        # 1. Load context
+        recent_messages = self.thread_memory.load_recent_messages()
+        
+        trigger_message = f"Autonomous Trigger: {trigger_reason}"
+        recent_messages.append(HumanMessage(content=trigger_message))
+        self.thread_memory.save_message("user", trigger_message)
+
+        program_context = self.program_memory.get_context(milo_id=self.milo_id)
+
+        # 2. Build system prompt
+        system_prompt = build_system_prompt(
+            persona_pack="sme",
+            program_context=program_context
+        )
+        
+        # 3. Setup dummy Queue to satisfy graph.py's expectation, and consume it silently
+        stream_queue = asyncio.Queue()
+        
+        async def _consume_queue():
+            while True:
+                event = await stream_queue.get()
+                if event["type"] in ["done", "error"]:
+                    break
+                    
+        consumer_task = asyncio.create_task(_consume_queue())
+
+        try:
+            workflow = build_graph()
+            config = {"configurable": {"runner": self, "queue": stream_queue}}
+            
+            state: AgentState = {
+                "thread_id": self.thread_id,
+                "tenant_id": self.tenant_id,
+                "messages": recent_messages,
+                "system_prompt": system_prompt,
+                "pending_tool_calls": [],
+                "approvals_pending": [],
+                "finish_reason": None,
+                "turn_count": 0,
+                "cost_usd": 0.0
+            }
+            
+            final_state = await workflow.ainvoke(state, config=config)
+            
+            # Persist AgentRun after graph finishes
+            turn_cost = final_state.get("cost_usd", 0.0)
+            turn_count = final_state.get("turn_count", 0)
+            
+            run = AgentRun(
+                tenant_id=uuid.UUID(self.tenant_id) if isinstance(self.tenant_id, str) else self.tenant_id,
+                milo_id=uuid.UUID(self.milo_id) if isinstance(self.milo_id, str) else self.milo_id,
+                thread_id=uuid.UUID(self.thread_id) if isinstance(self.thread_id, str) else self.thread_id,
+                started_at=datetime.datetime.now(datetime.UTC),
+                status="paused" if final_state.get("finish_reason") == "approval_required" else "done",
+                total_input_tokens=0,
+                total_output_tokens=0,
+                cost_usd=turn_cost,
+                turn_count=turn_count
+            )
+            self.session.add(run)
+            self.session.commit()
+
+            # Emit CloudWatch Custom Metrics
+            try:
+                cw = boto3.client('cloudwatch', region_name='us-east-1')
+                cw.put_metric_data(
+                    Namespace='Milo',
+                    MetricData=[
+                        {'MetricName': 'cost_usd', 'Value': turn_cost, 'Unit': 'Count'}
+                    ]
+                )
+            except Exception as e:
+                logger.debug(f"Failed to emit CW metrics: {e}")
+            
+            await stream_queue.put({"type": "done", "reason": final_state.get("finish_reason")})
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            await stream_queue.put({"type": "error", "error": str(e)})
+
+        await consumer_task
+

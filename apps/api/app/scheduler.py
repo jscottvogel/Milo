@@ -19,7 +19,7 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 
 
 async def evaluate_triggers():
-    logger.info("Evaluating triggers for all tenants...")
+    logger.info("Evaluating hourly triggers for all tenants...")
     db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/milo")
     engine = create_engine(db_url)
     
@@ -31,32 +31,49 @@ async def evaluate_triggers():
                 if not milo:
                     continue
                 
-                logger.info(f"Evaluating triggers for tenant {tenant.id}")
-                # Create a temporary runner just to extract integration tokens
-                runner_for_tokens = AgentRunner(
+                logger.info(f"Executing autonomous hourly background run for tenant {tenant.id}")
+                
+                runner = AgentRunner(
                     session=db,
                     tenant_id=str(tenant.id),
-                    thread_id="",
+                    thread_id=str(uuid.uuid4()),
                     milo_id=str(milo.id)
                 )
-                context = AgentContext(
-                    session=db,
-                    tenant_id=str(tenant.id),
-                    milo_id=str(milo.id),
-                    thread_id=str(uuid.uuid4()),
-                    integration_tokens=runner_for_tokens.integration_tokens
-                )
                 
-                trigger_tool = registry.get_tool("trigger.evaluate")
-                if trigger_tool:
-                    await trigger_tool.invoke({}, context)
+                await runner.run_autonomous_turn("Scheduled Hourly Trigger Evaluation")
     except Exception as e:
         logger.error(f"Error evaluating triggers: {e}")
+
+async def run_weekly_review():
+    logger.info("Executing Weekly Review for all tenants...")
+    db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/milo")
+    engine = create_engine(db_url)
+    
+    try:
+        with Session(engine) as db:
+            tenants = db.execute(select(Tenant)).scalars().all()
+            for tenant in tenants:
+                milo = db.execute(select(Milo).where(Milo.tenant_id == tenant.id)).scalar_one_or_none()
+                if not milo:
+                    continue
+                
+                logger.info(f"Executing autonomous weekly review run for tenant {tenant.id}")
+                
+                runner = AgentRunner(
+                    session=db,
+                    tenant_id=str(tenant.id),
+                    thread_id=str(uuid.uuid4()),
+                    milo_id=str(milo.id)
+                )
+                
+                await runner.run_autonomous_turn("Scheduled Weekly Review (Mondays at 9 AM)")
+    except Exception as e:
+        logger.error(f"Error evaluating weekly review: {e}")
 
 def start_scheduler():
     # Morning briefing is now handled entirely by AWS EventBridge Scheduler.
     # Triggers evaluation (e.g. every hour)
-    eval_cron = os.environ.get("SCHEDULE_EVALUATE_TRIGGERS", "0 * * * *")  # top of the hour
+    eval_cron = os.environ.get("SCHEDULE_EVALUATE_TRIGGERS", "0 */4 * * *")  # Every 4 hours
     parts = eval_cron.split()
     if len(parts) == 5:
         scheduler.add_job(
@@ -65,6 +82,13 @@ def start_scheduler():
             id="evaluate_triggers",
             replace_existing=True
         )
+        
+    scheduler.add_job(
+        run_weekly_review,
+        CronTrigger(day_of_week='mon', hour=9, minute=0),
+        id="weekly_review",
+        replace_existing=True
+    )
         
     scheduler.start()
     logger.info("APScheduler started")

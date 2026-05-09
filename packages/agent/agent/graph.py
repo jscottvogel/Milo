@@ -9,15 +9,17 @@ from agent.tools.registry import registry
 from agent.approvals import create_approval
 from db.models.identity import Milo
 
-async def perceive_node(state: AgentState, config: Any):
+from langchain_core.runnables import RunnableConfig
+
+async def perceive_node(state: AgentState):
     # Process incoming context, check budgets
     return {"turn_count": state.get("turn_count", 0) + 1}
 
-async def plan_node(state: AgentState, config: Any):
+async def plan_node(state: AgentState):
     # For Phase 3, we just pass through
     return state
 
-async def act_node(state: AgentState, config: Any):
+async def act_node(state: AgentState, config: RunnableConfig):
     runner = config["configurable"]["runner"]
     queue = config["configurable"]["queue"]
 
@@ -115,10 +117,17 @@ async def act_node(state: AgentState, config: Any):
         "cost_usd": state.get("cost_usd", 0.0) + turn_cost
     }
 
-async def observe_node(state: AgentState, config: Any):
+async def observe_node(state: AgentState, config: RunnableConfig):
     runner = config["configurable"]["runner"]
     queue = config["configurable"]["queue"]
-    context = runner.get_agent_context()
+    from agent.tools.context import AgentContext
+    context = AgentContext(
+        session=runner.session,
+        tenant_id=runner.tenant_id,
+        milo_id=runner.milo_id,
+        thread_id=runner.thread_id,
+        integration_tokens=runner.integration_tokens
+    )
 
     milo_uuid = uuid.UUID(runner.milo_id) if isinstance(runner.milo_id, str) else runner.milo_id
     milo = runner.session.get(Milo, milo_uuid)
@@ -185,7 +194,7 @@ async def observe_node(state: AgentState, config: Any):
         "finish_reason": finish_reason
     }
 
-async def reflect_node(state: AgentState, config: Any):
+async def reflect_node(state: AgentState):
     # Summarize working memory if too large
     return state
 
