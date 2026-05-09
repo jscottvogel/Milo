@@ -14,17 +14,20 @@ export const Home: React.FC = () => {
 
   const [dashboardData, setDashboardData] = React.useState<any>(null);
   const [approvalsData, setApprovalsData] = React.useState<any[]>([]);
+  const [recentActivity, setRecentActivity] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [dashRes, appRes] = await Promise.all([
+        const [dashRes, appRes, actRes] = await Promise.all([
           apiFetch<any>('/v1/work_items/dashboard'),
-          apiFetch<any>('/v1/approvals').catch(() => ({ approvals: [] }))
+          apiFetch<any>('/v1/approvals').catch(() => ({ approvals: [] })),
+          apiFetch<any[]>('/v1/activities').catch(() => [])
         ]);
         setDashboardData(dashRes);
         setApprovalsData(appRes.approvals || []);
+        setRecentActivity(actRes);
       } catch (err) {
         console.error('Failed to load dashboard data:', err);
       } finally {
@@ -54,12 +57,7 @@ export const Home: React.FC = () => {
     ];
   }, [dashboardData]);
 
-  // TODO: MOCK - Milo Activity Feed doesn't have a backend endpoint yet
-  const recentActivity = [
-    { id: 1, action: 'Emailed vendors regarding Project X timeline', time: '10 mins ago', type: 'email' },
-    { id: 2, action: 'Auto-approved budget increase for Alpha Initiative', time: '1 hour ago', type: 'approval' },
-    { id: 3, action: 'Flagged risk: "Dependencies delayed" in Q3 Objectives', time: '3 hours ago', type: 'risk' },
-  ];
+
 
   const quickActions = [
     { icon: Plus, label: 'New Task', color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },

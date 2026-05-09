@@ -3,10 +3,9 @@ import { Blocks, Mail, Plus, Check } from 'lucide-react';
 import { generateCodeVerifier, generateCodeChallenge } from '../utils/oauth';
 import { apiFetch } from '../api/client';
 
-// Mock Config
-const GOOGLE_CLIENT_ID = 'mock-client-id.apps.googleusercontent.com';
+// Nylas Config
+const NYLAS_CLIENT_ID = import.meta.env.VITE_NYLAS_CLIENT_ID || 'mock-client-id';
 const REDIRECT_URI = window.location.origin + '/oauth/callback';
-const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send';
 
 export function Integrations() {
   const [isConnected, setIsConnected] = useState(false);
@@ -27,24 +26,21 @@ export function Integrations() {
     sessionStorage.setItem('gmail_code_verifier', verifier);
     const challenge = await generateCodeChallenge(verifier);
 
-    // Google OAuth URL construction
+    // Nylas OAuth URL construction
     const params = new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
+      client_id: NYLAS_CLIENT_ID,
       redirect_uri: REDIRECT_URI,
       response_type: 'code',
-      scope: SCOPE,
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
-      access_type: 'offline',
-      prompt: 'consent'
+      provider: 'google'
     });
 
-    // In a real app, we redirect to Google:
-    // window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-    console.debug("Mock Google OAuth Params:", params.toString());
-    
-    // For PoC without a real client ID, we'll just redirect locally with a mock code:
-    window.location.href = `${REDIRECT_URI}?code=mock_auth_code_from_google&state=mock_state`;
+    // In a real app with real client ID, we redirect to Nylas:
+    if (NYLAS_CLIENT_ID !== 'mock-client-id') {
+      window.location.href = `https://api.us.nylas.com/v3/connect/auth?${params.toString()}`;
+    } else {
+      // For PoC without a real client ID, we'll just redirect locally with a mock code:
+      window.location.href = `${REDIRECT_URI}?code=mock_auth_code_from_nylas&state=mock_state`;
+    }
   };
 
   return (

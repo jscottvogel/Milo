@@ -3,50 +3,29 @@ import { useAppStore } from '../store/useAppStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Video, Send, FilePlus, Users, Calendar, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
+import { apiFetch } from '../api/client';
 
 export const Inbox: React.FC = () => {
   const { setBreadcrumbContext } = useAppStore();
   const [activeTab, setActiveTab] = useState<'emails' | 'meetings'>('emails');
 
+  const [emails, setEmails] = useState<any[]>([]);
+  const [meetings, setMeetings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     setBreadcrumbContext([{ label: 'Inbox', path: '/inbox' }]);
+    
+    Promise.all([
+      apiFetch<any[]>('/v1/inbox/emails').catch(() => []),
+      apiFetch<any[]>('/v1/inbox/meetings').catch(() => [])
+    ]).then(([emailData, meetingData]) => {
+      setEmails(emailData);
+      setMeetings(meetingData);
+    }).finally(() => setLoading(false));
   }, [setBreadcrumbContext]);
 
-  // TODO: MOCK - Email endpoint not available yet in Milo backend
-  const emails = [
-    {
-      id: 1,
-      sender: 'alex.chen@vendor.com',
-      subject: 'Re: Enterprise Contract Revision',
-      snippet: 'Hi there, we reviewed the redlines and accept 90% of the terms, but...',
-      date: '10:45 AM',
-      unread: true,
-      draft: 'Hi Alex, thanks for the quick turnaround. Could you clarify which 10% remains an issue? We can jump on a call if easier.\n\nBest,\nMilo (on behalf of JS)'
-    },
-    {
-      id: 2,
-      sender: 'sarah.k@internal.org',
-      subject: 'Project X - Weekly Status',
-      snippet: 'Status is green across the board. The only minor risk is...',
-      date: 'Yesterday',
-      unread: false,
-    }
-  ];
 
-  // TODO: MOCK - Meetings/Transcript endpoint not available yet in Milo backend
-  const meetings = [
-    {
-      id: 1,
-      title: 'Q3 Objectives Sync',
-      date: 'Today, 9:00 AM',
-      attendees: ['JS', 'AL', 'TK'],
-      summary: 'Discussed the slip in the Q3 objective. Agreed to reallocate engineering resources to unblock the marketing rollout. Alex to draft new timeline.',
-      actionItems: [
-        { text: 'Reallocate 2 engineers to Team B', owner: 'JS', linked: false },
-        { text: 'Draft new rollout timeline', owner: 'Alex', linked: true }
-      ]
-    }
-  ];
 
   return (
     <div className="flex flex-col h-full bg-background max-w-6xl mx-auto">
@@ -64,7 +43,7 @@ export const Inbox: React.FC = () => {
             >
               <Mail className="w-4 h-4" />
               Emails
-              <span className="ml-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded-full">1</span>
+              {emails.filter(e => e.unread).length > 0 && <span className="ml-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded-full">{emails.filter(e => e.unread).length}</span>}
             </button>
             <button
               onClick={() => setActiveTab('meetings')}
@@ -102,10 +81,10 @@ export const Inbox: React.FC = () => {
                           {email.sender}
                         </h3>
                       </div>
-                      <span className="text-xs text-muted-foreground">{email.date}</span>
+                      <span className="text-xs text-muted-foreground">{email.time}</span>
                     </div>
                     <h4 className="text-sm font-semibold mb-1">{email.subject}</h4>
-                    <p className="text-sm text-muted-foreground line-clamp-2">{email.snippet}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-2">{email.preview}</p>
                     
                     <div className="mt-4 flex gap-2">
                       <button className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-md transition-colors text-muted-foreground hover:text-white border border-white/5">
@@ -154,47 +133,51 @@ export const Inbox: React.FC = () => {
                     <h3 className="text-lg font-bold text-white">{meeting.title}</h3>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-white/5 px-2 py-1 rounded">
                       <Calendar className="w-3.5 h-3.5" />
-                      {meeting.date}
+                      {meeting.time}
                     </div>
                   </div>
                   
                   <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
                     <Users className="w-4 h-4" />
-                    <span>Attendees: {meeting.attendees.join(', ')}</span>
+                    <span>{meeting.attendees} attendees</span>
                   </div>
 
-                  <div className="mb-6">
-                    <h4 className="text-sm font-semibold mb-2">Transcript Summary</h4>
-                    <p className="text-sm text-gray-300 leading-relaxed bg-white/5 p-4 rounded-lg border border-white/5">
-                      {meeting.summary}
-                    </p>
-                  </div>
+                  {meeting.summary && (
+                    <div className="mb-6">
+                      <h4 className="text-sm font-semibold mb-2">Transcript Summary</h4>
+                      <p className="text-sm text-gray-300 leading-relaxed bg-white/5 p-4 rounded-lg border border-white/5">
+                        {meeting.summary}
+                      </p>
+                    </div>
+                  )}
 
-                  <div>
-                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-primary" />
-                      Extracted Action Items
-                    </h4>
-                    <ul className="space-y-2">
-                      {meeting.actionItems.map((ai, i) => (
-                        <li key={i} className="flex items-center justify-between text-sm bg-black/20 p-3 rounded-lg border border-white/5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-[9px] font-bold">
-                              {ai.owner.substring(0,2).toUpperCase()}
+                  {meeting.actionItems && meeting.actionItems.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-primary" />
+                        Extracted Action Items
+                      </h4>
+                      <ul className="space-y-2">
+                        {meeting.actionItems.map((ai: any, i: number) => (
+                          <li key={i} className="flex items-center justify-between text-sm bg-black/20 p-3 rounded-lg border border-white/5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-[9px] font-bold">
+                                {ai.owner.substring(0,2).toUpperCase()}
+                              </div>
+                              <span className="text-gray-300">{ai.text}</span>
                             </div>
-                            <span className="text-gray-300">{ai.text}</span>
-                          </div>
-                          {ai.linked ? (
-                            <span className="text-[10px] text-green-400 bg-green-500/10 px-2 py-1 rounded border border-green-500/20">Linked</span>
-                          ) : (
-                            <button className="text-[10px] text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors border border-transparent hover:border-primary/20">
-                              Convert to Task
-                            </button>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                            {ai.linked ? (
+                              <span className="text-[10px] text-green-400 bg-green-500/10 px-2 py-1 rounded border border-green-500/20">Linked</span>
+                            ) : (
+                              <button className="text-[10px] text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors border border-transparent hover:border-primary/20">
+                                Convert to Task
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               ))}
             </motion.div>

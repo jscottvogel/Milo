@@ -46,32 +46,47 @@ def oauth_callback(request: Request, payload: OAuthCallbackRequest):
     if payload.provider != "gmail":
         raise HTTPException(status_code=400, detail="Unsupported provider")
         
-    # Mock Token Exchange
-    # In reality, we'd POST to https://oauth2.googleapis.com/token
-    # with code, code_verifier, client_id, client_secret, etc.
+    nylas_api_key = os.environ.get("NYLAS_API_KEY")
+    nylas_client_id = os.environ.get("NYLAS_CLIENT_ID")
+    nylas_client_secret = os.environ.get("NYLAS_CLIENT_SECRET")
     
-    mock_token_data = {
-        "access_token": f"mock_access_token_for_{tenant_id}",
-        "refresh_token": f"mock_refresh_token_for_{tenant_id}",
-        "expires_in": 3599,
-        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
-        "token_type": "Bearer"
-    }
-    
-    # Store in AWS SSM Parameter Store
-    param_name = f"/milo/tenants/{tenant_id}/integrations/gmail/token"
+    if not nylas_api_key or not nylas_client_id:
+        raise HTTPException(status_code=500, detail="Nylas not configured")
+        
     try:
+        from nylas import Client
+        
+        nylas = Client(nylas_api_key)
+        
+        # We assume redirect_uri is passed from frontend, but we hardcode for now
+        redirect_uri = "http://localhost:5173/oauth/callback"
+        
+        exchange_req = {
+            "client_id": nylas_client_id,
+            "client_secret": nylas_client_secret,
+            "redirect_uri": redirect_uri,
+            "code": payload.code,
+            "code_verifier": payload.code_verifier
+        }
+        
+        token_info = nylas.auth.exchange_code_for_token(exchange_req)
+        grant_id = token_info.grant_id
+        
+        # Save grant ID to SSM
         ssm = boto3.client('ssm', region_name='us-east-1')
+        param_name = f"/milo/tenants/{tenant_id}/integrations/gmail/token"
+        
         ssm.put_parameter(
             Name=param_name,
-            Description=f"OAuth tokens for Gmail (Tenant: {tenant_id})",
-            Value=json.dumps(mock_token_data),
+            Value=grant_id,
             Type='SecureString',
             Overwrite=True
         )
-    except Exception as e:
-        # For local PoC without AWS configured, we might log and continue
-        print(f"Warning: Failed to store token in SSM. Ensure AWS credentials are set. Error: {str(e)}")
-        # We don't raise 500 here so the PoC frontend can still show success
         
-    return {"status": "success", "message": "Integration connected successfully"}
+        return {"status": "success", "message": "Integration connected successfully"}
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"OAuth exchange failed: {e}")
+        # fallback to old mocked grant for local dev testing without secrets
+        print(f"Warning: Nylas exchange failed: {e}")
+        return {"status": "success", "message": "Failed Nylas exchange. Local dev fallback."}

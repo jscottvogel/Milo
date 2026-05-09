@@ -16,7 +16,7 @@ from app.middleware.error_handler import (
 )
 from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.tenant_context import TenantContextMiddleware
-from app.routers import health, tenants, threads, users, approvals, milos, programs, integrations, billing, webhooks, files
+from app.routers import health, tenants, threads, users, approvals, milos, programs, integrations, billing, webhooks, files, activities, inbox
 
 if os.getenv("SENTRY_DSN"):
     sentry_sdk.init(
@@ -79,3 +79,5 @@ app.include_router(integrations.router)
 app.include_router(billing.router)
 app.include_router(webhooks.router)
 app.include_router(files.router)
+app.include_router(activities.router)
+app.include_router(inbox.router)
