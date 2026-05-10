@@ -45,7 +45,10 @@ class BedrockClient:
             read_timeout=300, # Increased timeout for long-running LLM streams
             retries={"max_attempts": 0} # We handle retries via tenacity
         )
-        self.client = boto3.client("bedrock-runtime", config=self.boto_config)
+        
+        profile_name = os.environ.get("AWS_PROFILE")
+        session = boto3.Session(profile_name=profile_name) if profile_name else boto3.Session()
+        self.client = session.client("bedrock-runtime", config=self.boto_config)
 
         self.primary_model_id = os.environ.get("BEDROCK_PRIMARY_MODEL", "us.anthropic.claude-sonnet-4-6")
         self.cheap_model_id = os.environ.get("BEDROCK_CHEAP_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0")

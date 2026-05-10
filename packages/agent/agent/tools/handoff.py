@@ -28,46 +28,30 @@ class HandoffHumanTool(Tool):
 
     async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
         import datetime
-        import httpx
+        from agent.tools.approval_tools import ApprovalCreateTool
         
-        # 1. Maintain backward compatibility with old Approval model
-        old_approval = Approval(
-            tenant_id=uuid.UUID(context.tenant_id),
-            milo_id=uuid.UUID(context.milo_id),
-            thread_id=uuid.UUID(context.thread_id),
-            tool_name="escalation",
-            payload_jsonb=input_data,
-            status="pending",
-            expires_at=datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
-        )
-        context.session.add(old_approval)
-        context.session.commit()
+        # We invoke the ApprovalCreateTool natively
+        approval_tool = ApprovalCreateTool()
         
-        # 2. Call new approval__create internally
-        # In a real setup, we would invoke the actual approval__create tool from registry
-        # or make the HTTP request directly to the microservice.
+        # Fetch notify_email from context or tenant settings
+        notify_email = context.integration_tokens.get("notify_email", "owner@example.com")
+        due_by = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
+        
+        payload = {
+            "title": f"Escalation: {input_data.get('reason', 'Human review needed')}",
+            "description": input_data.get("context_summary", ""),
+            "options": ["approve", "reject", "delegate", "defer"],
+            "requested_by": "Milo Agent (Handoff)",
+            "notify_email": notify_email,
+            "due_by": due_by.isoformat()
+        }
+        
         try:
-            mcp_url = "http://localhost:8000/approvals"
-            due_by = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
-            
-            # Fetch notify_email from context or tenant settings
-            notify_email = context.integration_tokens.get("notify_email", "owner@example.com")
-            
-            payload = {
-                "title": f"Escalation: {input_data.get('reason', 'Human review needed')}",
-                "description": input_data.get("context_summary", ""),
-                "options": ["approve", "reject", "delegate", "defer"],
-                "requested_by": "Milo",
-                "notify_email": notify_email,
-                "due_by": due_by.isoformat()
-            }
-            
-            # Fire and forget / await the HTTP call to the new approvals microservice
-            # async with httpx.AsyncClient() as client:
-            #     resp = await client.post(mcp_url, json=payload, timeout=5.0)
-            #     new_approval_id = resp.json().get("approval_id")
+            result = await approval_tool.invoke(payload, context)
+            new_approval_id = result.get("approval_id", "unknown")
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Error calling approval__create: {e}")
+            new_approval_id = "error"
             
-        return HandoffHumanOutput(success=True, approval_id=str(old_approval.id)).model_dump()
+        return HandoffHumanOutput(success=True, approval_id=new_approval_id).model_dump()

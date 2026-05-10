@@ -5,11 +5,14 @@ import { Building, Users, Link as LinkIcon, Database, ShieldAlert, Download, Sav
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
-const INTEGRATIONS = [
-  { id: "nylas-email", name: "Nylas Email", status: "connected" },
-  { id: "nylas-cal", name: "Nylas Calendar", status: "connected" },
-  { id: "stripe", name: "Stripe", status: "connected" },
-  { id: "github", name: "GitHub", status: "connected" },
+import { useEffect } from "react";
+import { fetchTenant, fetchIntegrations } from "@/lib/api";
+
+const DEFAULT_INTEGRATIONS = [
+  { id: "nylas-email", name: "Nylas Email", status: "disconnected" },
+  { id: "nylas-cal", name: "Nylas Calendar", status: "disconnected" },
+  { id: "stripe", name: "Stripe", status: "disconnected" },
+  { id: "github", name: "GitHub", status: "disconnected" },
   { id: "docusign", name: "DocuSign", status: "disconnected" },
   { id: "hubspot", name: "HubSpot", status: "disconnected" },
 ];
@@ -19,6 +22,23 @@ const ROLES: UserRole[] = ['Executive', 'PM', 'Engineer', 'Finance', 'Stakeholde
 export default function Settings() {
   const { userRole, setUserRole } = useAppStore();
   const [saved, setSaved] = useState(false);
+  const [tenantName, setTenantName] = useState("Loading...");
+  const [integrations, setIntegrations] = useState(DEFAULT_INTEGRATIONS);
+
+  useEffect(() => {
+    fetchTenant().then(t => setTenantName(t.name || "Acme Corp")).catch(console.error);
+    fetchIntegrations().then((data: any[]) => {
+      const isGmailConnected = data.some(i => i.provider === 'gmail' && i.status === 'connected');
+      setIntegrations([
+        { id: "nylas-email", name: "Nylas Email", status: isGmailConnected ? "connected" : "disconnected" },
+        { id: "nylas-cal", name: "Nylas Calendar", status: isGmailConnected ? "connected" : "disconnected" },
+        { id: "stripe", name: "Stripe", status: "disconnected" },
+        { id: "github", name: "GitHub", status: "disconnected" },
+        { id: "docusign", name: "DocuSign", status: "disconnected" },
+        { id: "hubspot", name: "HubSpot", status: "disconnected" },
+      ]);
+    }).catch(console.error);
+  }, []);
 
   const handleSave = () => {
     setSaved(true);
@@ -87,7 +107,7 @@ export default function Settings() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-white mb-1.5">Workspace Name</label>
-                <input type="text" defaultValue="Acme Corp" className="w-full max-w-md bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50" />
+                <input type="text" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="w-full max-w-md bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50" />
               </div>
               <div className="grid grid-cols-2 gap-4 max-w-md">
                 <div>
@@ -116,7 +136,7 @@ export default function Settings() {
           <section className="bg-[#111115] border border-white/10 rounded-xl p-6">
             <h2 className="text-lg font-semibold text-white mb-6">Connected Integrations</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {INTEGRATIONS.map(int => (
+              {integrations.map(int => (
                 <div key={int.id} className="border border-white/10 rounded-lg p-4 flex items-center justify-between bg-black/20">
                   <div className="font-medium text-white text-sm">{int.name}</div>
                   {int.status === 'connected' ? (

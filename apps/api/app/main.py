@@ -2,6 +2,11 @@ import os
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env
 
+# Clear potentially stale terminal AWS credentials so boto3 relies on AWS_PROFILE
+for key in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
+    if key in os.environ:
+        del os.environ[key]
+
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError

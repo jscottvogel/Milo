@@ -28,7 +28,7 @@ const navItems = [
 ];
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
-  const { pendingApprovalsCount, breadcrumbContext, setSearchOpen } = useAppStore();
+  const { isRightRailOpen, pendingApprovalsCount, breadcrumbContext, setSearchOpen, toggleRightRail } = useAppStore();
   const pathname = usePathname();
 
   // Basic breadcrumb fallback based on route if store is empty
@@ -57,7 +57,23 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
         
         <nav className="flex-1 px-2 sm:px-4 py-6 space-y-1 sm:space-y-2">
           {navItems.map((item) => {
-            const isActive = pathname.startsWith(item.path);
+            const isActive = item.path !== '/chat' && pathname.startsWith(item.path);
+            
+            if (item.path === '/chat') {
+              return (
+                <button
+                  key={item.path}
+                  onClick={toggleRightRail}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group relative text-muted-foreground hover:bg-white/5 hover:text-white"
+                >
+                  <div className="relative">
+                    <item.icon className="w-5 h-5 group-hover:text-white" />
+                  </div>
+                  <span className="hidden sm:block">{item.label}</span>
+                </button>
+              );
+            }
+
             return (
               <Link
                 key={item.path}
@@ -88,7 +104,10 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col relative overflow-hidden bg-gradient-to-br from-[#0a0a0c] to-[#111115]">
+      <div className={cn(
+        "flex-1 flex flex-col relative overflow-hidden bg-gradient-to-br from-[#0a0a0c] to-[#111115] transition-all duration-300",
+        isRightRailOpen ? "sm:pr-[400px]" : ""
+      )}>
         
         {/* Top Bar */}
         <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 border-b border-border bg-[#0a0a0c]/80 backdrop-blur-md z-10">

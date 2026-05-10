@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useEffect, useState, use } from "react";
+import { fetchProgram } from "@/lib/api";
+import { useAppStore } from "@/store/useAppStore";
 
 const TABS = [
   { name: "Overview", path: "" },
@@ -18,10 +21,25 @@ export default function ProgramDetailLayout({
   params,
 }: {
   children: React.ReactNode;
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const resolvedParams = use(params);
   const pathname = usePathname();
-  const basePath = `/programs/${params.id}`;
+  const basePath = `/programs/${resolvedParams.id}`;
+  const [program, setProgram] = useState<any>(null);
+  const { setBreadcrumbContext } = useAppStore();
+
+  useEffect(() => {
+    fetchProgram(resolvedParams.id).then(data => {
+      setProgram(data);
+      setBreadcrumbContext([
+        { label: 'Programs', path: '/programs' },
+        { label: data.name, path: basePath }
+      ]);
+    }).catch(console.error);
+
+    return () => setBreadcrumbContext([]); // clear on unmount
+  }, [resolvedParams.id, basePath, setBreadcrumbContext]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -30,18 +48,25 @@ export default function ProgramDetailLayout({
         <div className="flex justify-between items-start mb-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-2xl font-bold text-white">Project Alpha</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-                On Track
-              </span>
+              <h1 className="text-2xl font-bold text-white">{program?.name || "Loading..."}</h1>
+              {program && (
+                <span className={cn(
+                  "px-2.5 py-0.5 rounded-full text-xs font-medium border",
+                  program.status === 'done' || program.status === 'completed' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                  program.status === 'in_progress' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                  "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                )}>
+                  {program.status.replace('_', ' ')}
+                </span>
+              )}
             </div>
             <p className="text-muted-foreground text-sm max-w-2xl">
-              Platform modernization and cloud migration initiative targeting Q3 delivery.
+              {program?.description || "Loading description..."}
             </p>
           </div>
           <div className="text-right">
-            <div className="text-sm font-medium text-white">John Doe</div>
-            <div className="text-xs text-muted-foreground">Program Manager</div>
+            <div className="text-sm font-medium text-white">{program?.owner_name || "Unassigned"}</div>
+            <div className="text-xs text-muted-foreground capitalize">{program?.item_type ? program.item_type.replace('_', ' ') + ' Owner' : "Owner"}</div>
           </div>
         </div>
 

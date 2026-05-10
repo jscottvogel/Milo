@@ -4,27 +4,54 @@ import { CheckCircle2, XCircle, AlertTriangle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
-const PENDING = [
-  { id: "a1", title: "Approve SOW for Cloud Migration", program: "Alpha Initiative", requestor: "Jane Doe", date: "2 hours ago", urgency: "high" },
-  { id: "a2", title: "Q3 Vendor Budget Adjustment", program: "Beta Expansion", requestor: "Finance Team", date: "Yesterday", urgency: "medium" },
-  { id: "a3", title: "Milo drafted: Client Status Update", program: "Gamma Integration", requestor: "Milo AI", date: "3 days ago", urgency: "low" },
-];
-
-const HISTORY = [
-  { id: "h1", title: "Approve Architecture Design", program: "Alpha Initiative", requestor: "Eng Team", date: "May 1", status: "approved", actor: "You" },
-  { id: "h2", title: "Extend Deadline by 2 weeks", program: "Beta Expansion", requestor: "John Smith", date: "Apr 28", status: "rejected", actor: "You" },
-];
+import { useEffect } from "react";
+import { fetchApprovals, decideApproval } from "@/lib/api";
 
 export default function ApprovalsQueue() {
-  const [pending, setPending] = useState(PENDING);
-  const [history, setHistory] = useState(HISTORY);
+  const [pending, setPending] = useState<any[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleAction = (id: string, action: 'approved' | 'rejected') => {
-    const item = pending.find(i => i.id === id);
-    if (item) {
-      setPending(pending.filter(i => i.id !== id));
-      setHistory([{ ...item, status: action, actor: "You" }, ...history]);
-      // In reality, this would trigger an API call to the approval workflow engine which sends a Nylas email
+  const loadApprovals = () => {
+    fetchApprovals().then((data: any[]) => {
+      const formatted = data.map((a: any) => ({
+        id: a.id,
+        title: a.payload?.title || a.payload?.action || a.tool_name.replace(/_/g, ' '),
+        program: a.payload?.program_name || 'System Context',
+        requestor: 'Milo AI',
+        date: new Date(a.expires_at || a.decided_at || Date.now()).toLocaleDateString(),
+        urgency: 'medium',
+        status: a.status,
+        actor: a.decided_by ? 'User' : 'You'
+      }));
+
+      setPending(formatted.filter(a => a.status === 'pending'));
+      setHistory(formatted.filter(a => a.status !== 'pending'));
+      setIsLoading(false);
+    }).catch((err: any) => {
+      console.error(err);
+      setIsLoading(false);
+    });
+  };
+
+  useEffect(() => {
+    loadApprovals();
+  }, []);
+
+  const handleAction = async (id: string, action: 'approved' | 'rejected') => {
+    try {
+      // Optimistically update
+      const item = pending.find(i => i.id === id);
+      if (item) {
+        setPending(pending.filter(i => i.id !== id));
+        setHistory([{ ...item, status: action, actor: "You" }, ...history]);
+      }
+      
+      await decideApproval(id, action);
+      loadApprovals(); // Refresh
+    } catch (err) {
+      console.error(err);
+      loadApprovals(); // Revert on failure
     }
   };
 

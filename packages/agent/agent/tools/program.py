@@ -4,7 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from db.models.program import Decision, Risk, WorkItem, ChangeRequest, Stakeholder, Commitment
+from db.models.program import Decision, Risk, WorkItem, ChangeRequest, ProgramStakeholder, Commitment
 from agent.tools.context import AgentContext
 from agent.tools.registry import Tool
 
