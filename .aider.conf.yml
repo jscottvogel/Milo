@@ -1,0 +1,29 @@
+# Aider Configuration for Milo Project
+# This file configures how Aider behaves when invoked autonomously by Milo
+
+# Set the default model (uncomment the one you have an API key for)
+# model: claude-3-5-sonnet-20241022
+# model: gpt-4o
+model: gemini/gemini-2.5-pro
+
+# Automatically commit changes
+auto-commits: true
+
+# Use dark mode for terminal output (if run manually)
+dark-mode: true
+
+# Automatically accept all suggestions (required for autonomous mode)
+yes-always: true
+
+# Files to always load into Aider's context so it understands the project architecture
+read:
+  - "docs/requests/"
+  - "Milo_Platform_Build_Specification.md"
+  - "Milo_Antigravity_Build_Prompts.md"
+
+# Lint after editing to ensure the code works
+lint-cmd: "npx eslint apps/web/src"
+auto-lint: true
+
+# Don't show the initial welcome message when triggered by the agent
+no-show-release-notes: true

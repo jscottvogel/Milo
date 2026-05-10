@@ -228,7 +228,7 @@ async def run_hourly_monitor():
                     "2. Use memory.search to audit the current capability map against confirmed COMPLETED_ handoffs. Identify any capability that is missing or not yet handed off.\n"
                     "3. For each gap identified:\n"
                     "   a. Use memory.search to check if an idempotency key like 'hourly_handoff_{capability_slug}_{YYYY-MM-DD}' exists. If it exists in the last 24 hours, SKIP IT.\n"
-                    "   b. If new, use developer.handoff to generate a structured requirements doc. Also use storage.write to save a copy to 'engineering_requests/{slug}.md'.\n"
+                    "   b. If new, use developer.handoff to generate a structured requirements doc. Then, use the aider.invoke tool to trigger the engineering build, passing the prompt: 'I am Milo. I have written a new product specification at docs/requests/{slug}.md. Please read the document, formulate an implementation plan, and write the necessary code.'\n"
                     "   c. Use email.send to send the full handoff spec to j_scott_vogel@yahoo.com with the subject: '[Milo Handoff] {capability name} — {date}'.\n"
                     "   d. Use memory.write to write an 'event' memory entry recording the gap identified, handoff filed, timestamp, and the exact idempotency key used in step 3a.\n"
                     "Do not output any chat messages or push notifications unless a new handoff is filed."
