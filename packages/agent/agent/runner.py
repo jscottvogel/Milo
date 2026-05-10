@@ -58,13 +58,22 @@ class AgentRunner:
             logger.debug(f"Failed to load integration tokens from SSM: {e}")
         return tokens
         
+    def _clean_schema_for_bedrock(self, schema: dict[str, Any]):
+        schema.pop("title", None)
+        schema.pop("default", None)
+        schema.pop("$defs", None)
+        if "properties" in schema:
+            for prop in schema["properties"].values():
+                if isinstance(prop, dict):
+                    self._clean_schema_for_bedrock(prop)
+        if "items" in schema and isinstance(schema["items"], dict):
+            self._clean_schema_for_bedrock(schema["items"])
+
     def _format_tools_for_bedrock(self) -> list[dict[str, Any]]:
         tools = []
         for t in registry.get_all_tools():
             schema = t.input_schema.model_json_schema()
-            # Remove pydantic specific fields that might confuse bedrock
-            if "$defs" in schema:
-                del schema["$defs"]
+            self._clean_schema_for_bedrock(schema)
             tools.append({
                 "toolSpec": {
                     "name": t.name.replace(".", "__"),

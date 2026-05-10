@@ -28,15 +28,22 @@ async def milo_agent(state: AgentState, config: RunnableConfig):
             if m.content:
                 content.append({"text": m.content})
             if hasattr(m, "tool_calls") and m.tool_calls:
+                # Only send tool calls to Bedrock if they have a corresponding ToolMessage result
+                resolved_tc_ids = {
+                    msg.tool_call_id for msg in recent_messages
+                    if isinstance(msg, ToolMessage)
+                }
                 for tc in m.tool_calls:
-                    content.append({
-                        "toolUse": {
-                            "toolUseId": tc["id"],
-                            "name": tc["name"].replace(".", "__"),
-                            "input": tc["args"]
-                        }
-                    })
-            formatted_messages.append({"role": "assistant", "content": content})
+                    if tc["id"] in resolved_tc_ids:
+                        content.append({
+                            "toolUse": {
+                                "toolUseId": tc["id"],
+                                "name": tc["name"].replace(".", "__"),
+                                "input": tc["args"]
+                            }
+                        })
+            if content:
+                formatted_messages.append({"role": "assistant", "content": content})
         elif isinstance(m, ToolMessage):
             tool_result_block = {
                 "toolResult": {
