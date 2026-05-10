@@ -68,7 +68,7 @@ class AiderInvokeTool(Tool):
         command = [
             "aider", 
             "--message", prompt,
-            "--yes"
+            "--yes-always"
         ]
         
         # Fire and forget
