@@ -1,12 +1,12 @@
 "use client";
 
 import { useAppStore, UserRole } from "@/store/useAppStore";
-import { Building, Users, Link as LinkIcon, Database, ShieldAlert, Download, Save, Check } from "lucide-react";
+import { Building, Users, Link as LinkIcon, Database, ShieldAlert, Download, Save, Check, Clock, Play } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 import { useEffect } from "react";
-import { fetchTenant, fetchIntegrations } from "@/lib/api";
+import { fetchTenant, fetchIntegrations, fetchJobs, triggerJob } from "@/lib/api";
 
 const DEFAULT_INTEGRATIONS = [
   { id: "nylas-email", name: "Nylas Email", status: "disconnected" },
@@ -24,6 +24,8 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [tenantName, setTenantName] = useState("Loading...");
   const [integrations, setIntegrations] = useState(DEFAULT_INTEGRATIONS);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [runningJob, setRunningJob] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTenant().then(t => setTenantName(t.name || "Acme Corp")).catch(console.error);
@@ -38,7 +40,20 @@ export default function Settings() {
         { id: "hubspot", name: "HubSpot", status: "disconnected" },
       ]);
     }).catch(console.error);
+
+    fetchJobs().then(data => setJobs(data.jobs || [])).catch(console.error);
   }, []);
+
+  const handleTrigger = async (jobId: string) => {
+    setRunningJob(jobId);
+    try {
+      await triggerJob(jobId);
+    } catch (e) {
+      console.error("Failed to trigger job:", e);
+    } finally {
+      setRunningJob(null);
+    }
+  };
 
   const handleSave = () => {
     setSaved(true);
@@ -66,6 +81,7 @@ export default function Settings() {
         <div className="md:col-span-1 space-y-1">
           {[
             { id: 'profile', icon: Building, label: 'Tenant Profile', active: true },
+            { id: 'jobs', icon: Clock, label: 'Scheduled Tasks', active: false },
             { id: 'users', icon: Users, label: 'User Management', active: false },
             { id: 'integrations', icon: LinkIcon, label: 'Integrations', active: false },
             { id: 'data', icon: Database, label: 'Data & Privacy', active: false },
@@ -150,6 +166,39 @@ export default function Settings() {
                   )}
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* Scheduled Tasks */}
+          <section className="bg-[#111115] border border-white/10 rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-white mb-6">Scheduled Background Tasks</h2>
+            <div className="space-y-4">
+              {jobs.map(job => (
+                <div key={job.id} className="border border-white/10 rounded-lg p-4 flex items-center justify-between bg-black/20">
+                  <div>
+                    <div className="font-medium text-white text-sm">{job.name}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Schedule: <code className="text-primary bg-primary/10 px-1 py-0.5 rounded">{job.trigger}</code>
+                      {job.next_run_time && <span className="ml-2">Next Run: {new Date(job.next_run_time).toLocaleString()}</span>}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => handleTrigger(job.id)}
+                    disabled={runningJob === job.id}
+                    className="flex items-center gap-2 text-xs font-medium bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                  >
+                    {runningJob === job.id ? (
+                      <span className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Play className="w-3 h-3" />
+                    )}
+                    {runningJob === job.id ? "Running..." : "Run Now"}
+                  </button>
+                </div>
+              ))}
+              {jobs.length === 0 && (
+                <div className="text-sm text-muted-foreground italic">No active scheduled jobs.</div>
+              )}
             </div>
           </section>
 

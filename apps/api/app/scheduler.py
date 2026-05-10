@@ -12,15 +12,29 @@ from agent.runner import AgentRunner
 from agent.tools.registry import registry
 from agent.tools.context import AgentContext
 
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Note: APScheduler requires a timezone.
-scheduler = AsyncIOScheduler(timezone="UTC")
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+elif db_url.startswith("postgresql+asyncpg://"):
+    db_url = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+
+jobstores = {
+    'default': SQLAlchemyJobStore(url=db_url)
+}
+scheduler = AsyncIOScheduler(jobstores=jobstores, timezone="America/Chicago")
 
 
 async def evaluate_triggers():
     logger.info("Evaluating hourly triggers for all tenants...")
-    db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/milo")
+    db_url = settings.DATABASE_URL
+    if db_url.startswith("postgresql://"): db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    elif db_url.startswith("postgresql+asyncpg://"): db_url = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
     engine = create_engine(db_url)
     
     try:
@@ -33,10 +47,15 @@ async def evaluate_triggers():
                 
                 logger.info(f"Executing autonomous hourly background run for tenant {tenant.id}")
                 
+                thread_id = str(uuid.uuid4())
+                thread = Thread(id=uuid.UUID(thread_id), tenant_id=tenant.id, milo_id=milo.id, summary="Hourly Health Check Autonomous Run")
+                db.add(thread)
+                db.commit()
+                
                 runner = AgentRunner(
                     session=db,
                     tenant_id=str(tenant.id),
-                    thread_id=str(uuid.uuid4()),
+                    thread_id=thread_id,
                     milo_id=str(milo.id)
                 )
                 
@@ -72,7 +91,9 @@ async def evaluate_triggers():
 
 async def run_weekly_review():
     logger.info("Executing Weekly Review for all tenants...")
-    db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/milo")
+    db_url = settings.DATABASE_URL
+    if db_url.startswith("postgresql://"): db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    elif db_url.startswith("postgresql+asyncpg://"): db_url = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
     engine = create_engine(db_url)
     
     try:
@@ -85,10 +106,15 @@ async def run_weekly_review():
                 
                 logger.info(f"Executing autonomous weekly review run for tenant {tenant.id}")
                 
+                thread_id = str(uuid.uuid4())
+                thread = Thread(id=uuid.UUID(thread_id), tenant_id=tenant.id, milo_id=milo.id, summary="Weekly Review Autonomous Run")
+                db.add(thread)
+                db.commit()
+                
                 runner = AgentRunner(
                     session=db,
                     tenant_id=str(tenant.id),
-                    thread_id=str(uuid.uuid4()),
+                    thread_id=thread_id,
                     milo_id=str(milo.id)
                 )
                 
@@ -122,8 +148,50 @@ async def run_weekly_review():
     except Exception as e:
         logger.error(f"Error evaluating weekly review: {e}")
 
+async def run_morning_briefing():
+    logger.info("Executing Morning Briefing for all tenants...")
+    db_url = settings.DATABASE_URL
+    if db_url.startswith("postgresql://"): db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    elif db_url.startswith("postgresql+asyncpg://"): db_url = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    engine = create_engine(db_url)
+    
+    try:
+        with Session(engine) as db:
+            tenants = db.execute(select(Tenant)).scalars().all()
+            for tenant in tenants:
+                milo = db.execute(select(Milo).where(Milo.tenant_id == tenant.id)).scalar_one_or_none()
+                if not milo or not getattr(milo, 'briefing_enabled', True):
+                    logger.info(f"Morning briefing disabled for tenant {tenant.id}")
+                    continue
+                
+                logger.info(f"Executing morning briefing for tenant {tenant.id}")
+                
+                thread_id = str(uuid.uuid4())
+                thread = Thread(id=uuid.UUID(thread_id), tenant_id=tenant.id, milo_id=milo.id, summary="Morning Briefing Autonomous Run")
+                db.add(thread)
+                db.commit()
+                
+                runner = AgentRunner(
+                    session=db,
+                    tenant_id=str(tenant.id),
+                    thread_id=thread_id,
+                    milo_id=str(milo.id)
+                )
+                
+                prompt = (
+                    "It is time for the Morning Briefing. Please do the following:\n"
+                    "1. Call email.read for unread emails.\n"
+                    "2. Call calendar.read for today and tomorrow.\n"
+                    "3. Call work_item.read for overdue and upcoming work items.\n"
+                    "4. Call memory.search for pending action items or flagged risks.\n"
+                    "5. Compose a structured daily briefing and send it using push.notify to j_scott_vogel@yahoo.com.\n"
+                    "6. Write a memory entry confirming the morning briefing was sent today."
+                )
+                await runner.run_autonomous_turn(prompt)
+    except Exception as e:
+        logger.error(f"Error executing morning briefing: {e}")
+
 def start_scheduler():
-    # Morning briefing is now handled entirely by AWS EventBridge Scheduler.
     # Triggers evaluation (e.g. every hour)
     eval_cron = os.environ.get("SCHEDULE_EVALUATE_TRIGGERS", "0 * * * *")  # Hourly
     parts = eval_cron.split()
@@ -132,6 +200,16 @@ def start_scheduler():
             evaluate_triggers,
             CronTrigger(minute=parts[0], hour=parts[1], day=parts[2], month=parts[3], day_of_week=parts[4]),
             id="evaluate_triggers",
+            replace_existing=True
+        )
+        
+    briefing_cron = os.environ.get("SCHEDULE_MORNING_BRIEFING", "0 7 * * *")
+    b_parts = briefing_cron.split()
+    if len(b_parts) == 5:
+        scheduler.add_job(
+            run_morning_briefing,
+            CronTrigger(minute=b_parts[0], hour=b_parts[1], day=b_parts[2], month=b_parts[3], day_of_week=b_parts[4]),
+            id="morning_briefing",
             replace_existing=True
         )
         

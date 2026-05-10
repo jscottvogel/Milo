@@ -53,8 +53,9 @@ class TriggerEvaluateTool(Tool):
                 f"You MUST use your tools (like email.read, calendar.read, work_item.read, etc.) to check if this condition is met.\n"
                 f"If the condition is NOT met, simply state that the condition is not met and stop.\n"
                 f"If the condition IS met, you MUST execute the following action using your tools: '{action}'.\n"
-                f"CRITICAL: Before taking the action, search your memory to ensure you have not already taken this exact action today. If you have, do NOT take it again.\n"
-                f"After taking the action, write a memory entry confirming that you fired the '{rule_id}' trigger today."
+                f"CRITICAL IDEMPOTENCY CHECK: Before taking ANY action, you MUST use memory.search with the query 'trigger_fired_{rule_id}' to check if this exact alert was already fired today. If you find a memory entry from today, do NOT take the action again and simply stop.\n"
+                f"IMPORTANT: You MUST use the `push.notify` tool to send any alerts, warnings, or notifications to the user. Do NOT use email.send for proactive alerts.\n"
+                f"After successfully taking the action via `push.notify`, you MUST use memory.write to write a memory entry containing exactly: 'trigger_fired_{rule_id}' confirming the action was taken."
             )
 
             # Create a Thread explicitly to prevent ForeignKeyViolation
@@ -79,7 +80,7 @@ class TriggerEvaluateTool(Tool):
             # Consume the generator to run the agent synchronously from the tool's perspective
             action_taken = False
             async for event in runner.run_turn(prompt):
-                if event.get("type") == "tool_use_start" and event.get("name") == "email.send":
+                if event.get("type") == "tool_use_start" and event.get("name") in ["email.send", "push.notify"]:
                     action_taken = True
 
             results.append({

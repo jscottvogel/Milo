@@ -252,23 +252,28 @@ class AgentRunner:
         consumer_task = asyncio.create_task(_consume_queue())
 
         try:
-            workflow = build_graph(checkpointer=self._get_checkpointer())
-            config = {"configurable": {"thread_id": self.thread_id, "runner": self, "queue": stream_queue}, "recursion_limit": 50}
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+            from agent.graph import build_graph
+            from agent.state import AgentState
             
-            state: AgentState = {
-                "thread_id": self.thread_id,
-                "tenant_id": self.tenant_id,
-                "messages": recent_messages,
-                "system_prompt": system_prompt,
-                "pending_tool_calls": [],
-                "approvals_pending": [],
-                "finish_reason": None,
-                "turn_count": 0,
-                "iterations": 0,
-                "cost_usd": 0.0
-            }
+            async with AsyncSqliteSaver.from_conn_string("checkpoints.db") as checkpointer:
+                workflow = build_graph(checkpointer=checkpointer)
+                config = {"configurable": {"thread_id": self.thread_id, "runner": self, "queue": stream_queue}, "recursion_limit": 50}
             
-            final_state = await workflow.ainvoke(state, config=config)
+                state: AgentState = {
+                    "thread_id": self.thread_id,
+                    "tenant_id": self.tenant_id,
+                    "messages": recent_messages,
+                    "system_prompt": system_prompt,
+                    "pending_tool_calls": [],
+                    "approvals_pending": [],
+                    "finish_reason": None,
+                    "turn_count": 0,
+                    "iterations": 0,
+                    "cost_usd": 0.0
+                }
+                
+                final_state = await workflow.ainvoke(state, config=config)
             
             # Persist AgentRun after graph finishes
             turn_cost = final_state.get("cost_usd", 0.0)
@@ -350,27 +355,14 @@ class AgentRunner:
 
         await consumer_task
 
-    def _get_checkpointer(self):
-        import sqlite3
-        from langgraph.checkpoint.sqlite import SqliteSaver
-        conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
-        return SqliteSaver(conn)
-
     async def resume_turn(self, approval_id: str, decision: str, notes: str | None = None) -> None:
         """Resume the LangGraph thread from an interrupt."""
         from langgraph.types import Command
         import traceback
+        from agent.graph import build_graph
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
         
-        workflow = build_graph(checkpointer=self._get_checkpointer())
         stream_queue = asyncio.Queue()
-        config = {
-            "configurable": {
-                "thread_id": self.thread_id,
-                "runner": self,
-                "queue": stream_queue
-            },
-            "recursion_limit": 50
-        }
         
         response_payload = {
             "status": decision,
@@ -387,7 +379,17 @@ class AgentRunner:
         consumer_task = asyncio.create_task(_consume_queue())
         
         try:
-            final_state = await workflow.ainvoke(Command(resume=response_payload), config=config)
+            async with AsyncSqliteSaver.from_conn_string("checkpoints.db") as checkpointer:
+                workflow = build_graph(checkpointer=checkpointer)
+                config = {
+                    "configurable": {
+                        "thread_id": self.thread_id,
+                        "runner": self,
+                        "queue": stream_queue
+                    },
+                    "recursion_limit": 50
+                }
+                final_state = await workflow.ainvoke(Command(resume=response_payload), config=config)
             await stream_queue.put({"type": "done", "reason": "resumed_and_finished"})
         except Exception as e:
             traceback.print_exc()
