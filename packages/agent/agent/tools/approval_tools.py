@@ -13,7 +13,7 @@ class ApprovalCreateInput(BaseModel):
     metadata_: Optional[dict] = Field(None, alias="metadata", description="Any extra context")
 
 class ApprovalCreateTool:
-    name = "approval__create"
+    name = "approval.create"
     description = "Request structured approval from a human for an action."
     input_schema = ApprovalCreateInput
     output_schema = None
@@ -53,7 +53,7 @@ class ApprovalReadInput(BaseModel):
     approval_id: Optional[str] = Field(None, description="Optional UUID to return single approval. Omit for all pending.")
 
 class ApprovalReadTool:
-    name = "approval__read"
+    name = "approval.read"
     description = "Read the status of one or all pending approvals."
     input_schema = ApprovalReadInput
     output_schema = None
@@ -93,7 +93,7 @@ class ApprovalRespondInput(BaseModel):
     decided_by: str = Field(description="Name or email of decision maker")
 
 class ApprovalRespondTool:
-    name = "approval__respond"
+    name = "approval.respond"
     description = "Submit a decision on a pending approval."
     input_schema = ApprovalRespondInput
     output_schema = None
@@ -126,7 +126,7 @@ class ApprovalCancelInput(BaseModel):
     reason: Optional[str] = Field(None, description="Optional reason for cancellation")
 
 class ApprovalCancelTool:
-    name = "approval__cancel"
+    name = "approval.cancel"
     description = "Cancel a pending approval request."
     input_schema = ApprovalCancelInput
     output_schema = None

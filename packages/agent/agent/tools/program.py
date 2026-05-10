@@ -66,8 +66,8 @@ class WorkItemReadTool(Tool):
                 data["decisions"] = [{"id": str(d.id), "title": d.title, "decision_text": d.decision_text, "alternatives_jsonb": d.alternatives_jsonb, "source_link": d.source_link} for d in context.session.scalars(d_stmt).all()]
 
                 # Load stakeholders
-                sh_stmt = select(Stakeholder).where(Stakeholder.work_item_id == w.id)
-                data["stakeholders"] = [{"id": str(sh.id), "name": sh.name, "email": sh.email, "role": sh.role, "influence": sh.influence, "interest": sh.interest, "satisfaction": sh.satisfaction, "notes": sh.notes} for sh in context.session.scalars(sh_stmt).all()]
+                sh_stmt = select(ProgramStakeholder).where(ProgramStakeholder.program_id == w.id)
+                data["stakeholders"] = [{"id": str(sh.stakeholder_sub), "name": sh.profile.full_name if sh.profile else "Unknown", "email": "N/A", "role": sh.role, "influence": sh.influence, "interest": sh.interest, "satisfaction": sh.satisfaction, "notes": ""} for sh in context.session.scalars(sh_stmt).all()]
 
                 # Load action items (commitments)
                 ci_stmt = select(Commitment).where(Commitment.work_item_id == w.id)

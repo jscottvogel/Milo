@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, XCircle, AlertTriangle, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -11,18 +11,20 @@ export default function ApprovalsQueue() {
   const [pending, setPending] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const loadApprovals = () => {
     fetchApprovals().then((data: any[]) => {
       const formatted = data.map((a: any) => ({
         id: a.id,
-        title: a.payload?.title || a.payload?.action || a.tool_name.replace(/_/g, ' '),
+        title: a.payload?.title || a.payload?.action || a.tool_name?.replace(/_/g, ' ') || 'Unknown Action',
         program: a.payload?.program_name || 'System Context',
         requestor: 'Milo AI',
         date: new Date(a.expires_at || a.decided_at || Date.now()).toLocaleDateString(),
         urgency: 'medium',
         status: a.status,
-        actor: a.decided_by ? 'User' : 'You'
+        actor: a.decided_by ? 'User' : 'You',
+        payload: a.payload || a.payload_jsonb || a.options_jsonb || a.context_payload_jsonb || a
       }));
 
       setPending(formatted.filter(a => a.status === 'pending'));
@@ -77,40 +79,56 @@ export default function ApprovalsQueue() {
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {pending.map(item => (
-              <div key={item.id} className="bg-[#111115] border border-white/10 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-white/20 transition-colors">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-1">
-                    <h3 className="font-semibold text-white text-lg">{item.title}</h3>
-                    {item.urgency === 'high' && (
-                      <span className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
-                        <AlertTriangle className="w-3 h-3" />
-                        Urgent
-                      </span>
-                    )}
+              <div key={item.id} className="bg-[#111115] border border-white/10 rounded-xl overflow-hidden group hover:border-white/20 transition-colors">
+                <div 
+                  className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer"
+                  onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="font-semibold text-white text-lg">{item.title}</h3>
+                      {item.urgency === 'high' && (
+                        <span className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
+                          <AlertTriangle className="w-3 h-3" />
+                          Urgent
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                      <span className="bg-white/5 px-2 py-0.5 rounded text-white/80">{item.program}</span>
+                      <span>Requested by <span className="text-white/80">{item.requestor}</span></span>
+                      <span>{item.date}</span>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                    <span className="bg-white/5 px-2 py-0.5 rounded text-white/80">{item.program}</span>
-                    <span>Requested by <span className="text-white/80">{item.requestor}</span></span>
-                    <span>{item.date}</span>
+                  
+                  <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <button 
+                      onClick={() => handleAction(item.id, 'rejected')}
+                      className="px-4 py-2 bg-white/5 hover:bg-red-500/20 text-white hover:text-red-400 rounded-lg text-sm font-medium transition-colors border border-transparent hover:border-red-500/30 flex items-center gap-2"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Reject
+                    </button>
+                    <button 
+                      onClick={() => handleAction(item.id, 'approved')}
+                      className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      Approve
+                    </button>
+                    <div className="text-muted-foreground hover:text-white transition-colors ml-2">
+                      {expandedId === item.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    </div>
                   </div>
                 </div>
-                
-                <div className="flex items-center gap-3 shrink-0">
-                  <button 
-                    onClick={() => handleAction(item.id, 'rejected')}
-                    className="px-4 py-2 bg-white/5 hover:bg-red-500/20 text-white hover:text-red-400 rounded-lg text-sm font-medium transition-colors border border-transparent hover:border-red-500/30 flex items-center gap-2"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Reject
-                  </button>
-                  <button 
-                    onClick={() => handleAction(item.id, 'approved')}
-                    className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Approve
-                  </button>
-                </div>
+                {expandedId === item.id && (
+                  <div className="px-5 pb-5 pt-2 border-t border-white/5 bg-[#0a0a0c]">
+                    <h4 className="text-sm font-medium text-white mb-2">Escalation Details</h4>
+                    <pre className="text-xs text-muted-foreground bg-black/50 p-4 rounded-lg overflow-x-auto whitespace-pre-wrap border border-white/5 max-h-96">
+                      {JSON.stringify(item.payload, null, 2)}
+                    </pre>
+                  </div>
+                )}
               </div>
             ))}
           </div>

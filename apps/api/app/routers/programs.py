@@ -209,11 +209,25 @@ def build_tree(items: list[WorkItem], parent_id: uuid.UUID | None, all_risks: li
                     description=ci.description, owner_name=ci.owner_name, due_date=ci.due_date.isoformat() if ci.due_date else None, status=ci.status
                 ) for ci in all_action_items if ci.work_item_id == item.id
             ]
+            children_nodes = build_tree(items, item.id, all_risks, all_crs, all_decisions, all_stakeholders, all_action_items)
+            
+            # Auto-compute status from children
+            computed_status = item.status
+            if children_nodes:
+                if any(c.status in ('blocked', 'red') for c in children_nodes):
+                    computed_status = 'blocked'
+                elif any(c.status in ('at_risk', 'amber') for c in children_nodes):
+                    computed_status = 'at_risk'
+                elif all(c.status in ('done', 'completed') for c in children_nodes):
+                    computed_status = 'done'
+                else:
+                    computed_status = 'in_progress'
+
             node = WorkItemTreeResponse(
                 id=str(item.id),
                 name=item.name,
                 item_type=item.item_type,
-                status=item.status,
+                status=computed_status,
                 parent_id=str(item.parent_id) if item.parent_id else None,
                 description=item.description,
                 owner_name=item.owner_name,
@@ -221,7 +235,7 @@ def build_tree(items: list[WorkItem], parent_id: uuid.UUID | None, all_risks: li
                 due_date=item.due_date.isoformat() if item.due_date else None,
                 metadata_json=item.metadata_json,
                 dependencies=[str(d) for d in item.dependencies] if item.dependencies else [],
-                children=build_tree(items, item.id, all_risks, all_crs, all_decisions, all_stakeholders, all_action_items),
+                children=children_nodes,
                 risks=node_risks,
                 change_requests=node_crs,
                 decisions=node_decisions,

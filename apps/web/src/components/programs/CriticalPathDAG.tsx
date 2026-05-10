@@ -84,6 +84,8 @@ export function CriticalPathDAG() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
   const [isSimulating, setIsSimulating] = useState(false);
 
+  const [hasChanges, setHasChanges] = useState(false);
+
   const onNodeDragStop = (event: any, node: any) => {
     // Simulate what-if slip
     setIsSimulating(true);
@@ -101,11 +103,23 @@ export function CriticalPathDAG() {
         })
       );
       setIsSimulating(false);
+      setHasChanges(true);
     }, 600);
   };
 
+  const handleSave = () => {
+    // Submit to API logic
+    setHasChanges(false);
+  };
+
+  const handleCancel = () => {
+    // Revert logic
+    setNodes(layoutedNodes);
+    setHasChanges(false);
+  };
+
   return (
-    <div className="w-full h-[400px] border border-white/10 rounded-xl bg-black/40 overflow-hidden">
+    <div className="w-full h-[400px] border border-white/10 rounded-xl bg-black/40 overflow-hidden relative">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -125,6 +139,23 @@ export function CriticalPathDAG() {
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/80 border border-white/20 px-4 py-2 rounded-full text-xs font-medium text-white shadow-xl backdrop-blur-md flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
           Simulating Slip Impact...
+        </div>
+      )}
+
+      {hasChanges && !isSimulating && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-[#111115]/95 border border-white/20 p-3 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-4 animate-in slide-in-from-bottom-4">
+          <div className="text-sm">
+            <span className="text-amber-400 font-medium">Impact Detected:</span>
+            <span className="text-muted-foreground ml-2">2 downstream tasks delayed by 2 days.</span>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleCancel} className="px-3 py-1.5 text-xs font-medium bg-white/5 hover:bg-white/10 rounded border border-white/10 transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSave} className="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded transition-colors">
+              Save Changes
+            </button>
+          </div>
         </div>
       )}
     </div>
