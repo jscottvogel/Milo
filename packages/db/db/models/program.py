@@ -53,8 +53,10 @@ class ProgramStakeholder(TenantBoundBase):
     interest: Mapped[str | None] = mapped_column(String, nullable=True)
     satisfaction: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
     invited_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
     accepted_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
+    last_active_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)
 
     profile = relationship("StakeholderProfile", primaryjoin="ProgramStakeholder.stakeholder_sub == StakeholderProfile.sub", foreign_keys="ProgramStakeholder.stakeholder_sub", uselist=False)
 

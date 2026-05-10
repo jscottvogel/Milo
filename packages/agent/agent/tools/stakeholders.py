@@ -75,3 +75,67 @@ class StakeholderInviteTool(Tool):
                 ).model_dump()
             except Exception as e:
                 raise ValueError(f"Failed to invite stakeholder: {e}")
+
+class StakeholderReadInput(BaseModel):
+    program_id: str | None = Field(None, description="The UUID of the program to fetch stakeholders for.")
+    stakeholder_id: str | None = Field(None, description="The UUID of a specific stakeholder to read.")
+    status: str | None = Field(None, description="Filter by status: 'pending', 'active', 'revoked'.")
+
+class StakeholderSearchInput(BaseModel):
+    query: str | None = Field(None, description="Free-text search against email and role.")
+    role: str | None = Field(None, description="Filter by role (e.g. sponsor, reviewer).")
+    influence: str | None = Field(None, description="Filter by influence: 'low', 'med', 'high'.")
+    interest: str | None = Field(None, description="Filter by interest: 'low', 'med', 'high'.")
+    status: str | None = Field(None, description="Filter by status.")
+    limit: int = Field(20, description="Maximum number of stakeholders to return.")
+
+class StakeholderReadTool(Tool):
+    name = "stakeholder.read"
+    description = "Read stakeholders for a program or fetch a specific stakeholder by ID."
+    input_schema = StakeholderReadInput
+    output_schema = None # Returns a list of stakeholders
+    mutates = False
+    requires_approval = False
+
+    async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
+        params = {}
+        if input_data.get("program_id"):
+            params["program_id"] = input_data["program_id"]
+        if input_data.get("stakeholder_id"):
+            params["stakeholder_id"] = input_data["stakeholder_id"]
+        if input_data.get("status"):
+            params["status"] = input_data["status"]
+            
+        async with httpx.AsyncClient() as client:
+            headers = {"Authorization": f"Bearer dev_{context.tenant_id}"}
+            try:
+                res = await client.get("http://127.0.0.1:8000/v1/stakeholders", params=params, headers=headers)
+                res.raise_for_status()
+                return res.json()
+            except Exception as e:
+                raise ValueError(f"Failed to read stakeholders: {e}")
+
+class StakeholderSearchTool(Tool):
+    name = "stakeholder.search"
+    description = "Search all stakeholders across all programs for the tenant by query, role, influence, interest, or status."
+    input_schema = StakeholderSearchInput
+    output_schema = None # Returns a list of stakeholders
+    mutates = False
+    requires_approval = False
+
+    async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
+        params = {"limit": input_data.get("limit", 20)}
+        if input_data.get("query"): params["query"] = input_data["query"]
+        if input_data.get("role"): params["role"] = input_data["role"]
+        if input_data.get("influence"): params["influence"] = input_data["influence"]
+        if input_data.get("interest"): params["interest"] = input_data["interest"]
+        if input_data.get("status"): params["status"] = input_data["status"]
+            
+        async with httpx.AsyncClient() as client:
+            headers = {"Authorization": f"Bearer dev_{context.tenant_id}"}
+            try:
+                res = await client.get("http://127.0.0.1:8000/v1/stakeholders/search", params=params, headers=headers)
+                res.raise_for_status()
+                return res.json()
+            except Exception as e:
+                raise ValueError(f"Failed to search stakeholders: {e}")

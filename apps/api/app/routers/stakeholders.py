@@ -15,10 +15,23 @@ from db.session import db_session, SessionLocal
 from db.models.identity import StakeholderProfile
 from db.models.program import ProgramStakeholder, WorkItem
 
-router = APIRouter(prefix="/stakeholders", tags=["Stakeholders"])
+router = APIRouter(prefix="/v1/stakeholders", tags=["Stakeholders"])
 
 # Dummy JWT secret for magic links (should be in env vars in prod)
 MAGIC_LINK_SECRET = os.getenv("MAGIC_LINK_SECRET", "super-secret-magic-link-key")
+
+class StakeholderResponse(BaseModel):
+    id: str
+    program_id: str
+    program_name: str
+    email: Optional[str]
+    role: Optional[str]
+    influence: Optional[str]
+    interest: Optional[str]
+    satisfaction: Optional[str]
+    status: str
+    invited_at: Optional[datetime.datetime]
+    last_active_at: Optional[datetime.datetime]
 
 class InviteStakeholderRequest(BaseModel):
     email: str
@@ -69,6 +82,7 @@ def invite_stakeholder(
             stakeholder_sub=stakeholder_sub,
             tenant_id=tenant_id,
             program_id=req.program_id,
+            email=req.email,
             role=req.role,
             influence=req.influence,
             interest=req.interest,
@@ -169,3 +183,90 @@ def list_stakeholder_programs(
             })
             
     return memberships
+
+@router.get("", response_model=List[StakeholderResponse])
+def get_stakeholders(
+    program_id: Optional[uuid.UUID] = None,
+    stakeholder_id: Optional[uuid.UUID] = None,
+    status: Optional[str] = None,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id)
+):
+    with db_session(tenant_id) as session:
+        stmt = select(ProgramStakeholder, WorkItem.name.label("program_name")).join(WorkItem, ProgramStakeholder.program_id == WorkItem.id).where(ProgramStakeholder.tenant_id == tenant_id)
+        
+        if program_id:
+            stmt = stmt.where(ProgramStakeholder.program_id == program_id)
+        if stakeholder_id:
+            stmt = stmt.where(ProgramStakeholder.stakeholder_sub == stakeholder_id)
+        if status:
+            stmt = stmt.where(ProgramStakeholder.status == status)
+            
+        results = session.execute(stmt).all()
+        
+        response = []
+        for sh, prog_name in results:
+            response.append(StakeholderResponse(
+                id=str(sh.stakeholder_sub),
+                program_id=str(sh.program_id),
+                program_name=prog_name,
+                email=sh.email,
+                role=sh.role,
+                influence=sh.influence,
+                interest=sh.interest,
+                satisfaction=sh.satisfaction,
+                status=sh.status,
+                invited_at=sh.invited_at,
+                last_active_at=sh.last_active_at
+            ))
+        return response
+
+from sqlalchemy import or_
+
+@router.get("/search", response_model=List[StakeholderResponse])
+def search_stakeholders(
+    query: Optional[str] = None,
+    role: Optional[str] = None,
+    influence: Optional[str] = None,
+    interest: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 20,
+    tenant_id: uuid.UUID = Depends(get_current_tenant_id)
+):
+    with db_session(tenant_id) as session:
+        stmt = select(ProgramStakeholder, WorkItem.name.label("program_name")).join(WorkItem, ProgramStakeholder.program_id == WorkItem.id).where(ProgramStakeholder.tenant_id == tenant_id)
+        
+        if query:
+            search_pattern = f"%{query}%"
+            stmt = stmt.where(or_(
+                ProgramStakeholder.email.ilike(search_pattern),
+                ProgramStakeholder.role.ilike(search_pattern)
+            ))
+        
+        if role:
+            stmt = stmt.where(ProgramStakeholder.role == role)
+        if influence:
+            stmt = stmt.where(ProgramStakeholder.influence == influence)
+        if interest:
+            stmt = stmt.where(ProgramStakeholder.interest == interest)
+        if status:
+            stmt = stmt.where(ProgramStakeholder.status == status)
+            
+        stmt = stmt.limit(limit)
+        results = session.execute(stmt).all()
+        
+        response = []
+        for sh, prog_name in results:
+            response.append(StakeholderResponse(
+                id=str(sh.stakeholder_sub),
+                program_id=str(sh.program_id),
+                program_name=prog_name,
+                email=sh.email,
+                role=sh.role,
+                influence=sh.influence,
+                interest=sh.interest,
+                satisfaction=sh.satisfaction,
+                status=sh.status,
+                invited_at=sh.invited_at,
+                last_active_at=sh.last_active_at
+            ))
+        return response

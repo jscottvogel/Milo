@@ -185,8 +185,9 @@ async def run_morning_briefing():
                     "2. Call calendar.read for today and tomorrow.\n"
                     "3. Call work_item.read for overdue and upcoming work items.\n"
                     "4. Call memory.search for pending action items or flagged risks.\n"
-                    "5. Compose a structured daily briefing and send it using push.notify to j_scott_vogel@yahoo.com.\n"
-                    "6. Write a memory entry confirming the morning briefing was sent today."
+                    "5. Call stakeholder.read to check the status of all program stakeholders. Include a 'Stakeholder Health' block in your briefing if any stakeholder has status=pending for >7 days (disengaged invite).\n"
+                    "6. Compose a structured daily briefing and send it using push.notify to j_scott_vogel@yahoo.com.\n"
+                    "7. Write a memory entry confirming the morning briefing was sent today."
                 )
                 await runner.run_autonomous_turn(prompt)
     except Exception as e:
@@ -225,12 +226,13 @@ async def run_hourly_monitor():
                 prompt = (
                     "Autonomous Trigger: It is time for the Hourly Program Monitor & Engineering Handoff loop. Please strictly follow these steps:\n"
                     "1. Use work_item.read to read all root items (include_children: true) and identify overdue tasks, stalled milestones, unresolved risks, and missing owners.\n"
-                    "2. Use memory.search to audit the current capability map against confirmed COMPLETED_ handoffs. Identify any capability that is missing or not yet handed off.\n"
-                    "3. For each gap identified:\n"
+                    "2. Use stakeholder.read to check program stakeholders. Flag stakeholders with influence=high and satisfaction <= 2 as a risk.\n"
+                    "3. Use memory.search to audit the current capability map against confirmed COMPLETED_ handoffs. Identify any capability that is missing or not yet handed off.\n"
+                    "4. For each gap identified:\n"
                     "   a. Use memory.search to check if an idempotency key like 'hourly_handoff_{capability_slug}_{YYYY-MM-DD}' exists. If it exists in the last 24 hours, SKIP IT.\n"
                     "   b. If new, use developer.handoff to generate a structured requirements doc. Then, use the aider.invoke tool to trigger the engineering build. Set 'spec_file' to the EXACT file path returned by developer.handoff. Set 'prompt' to: 'I am Milo. I have written a new product specification. Please read the attached document, formulate an implementation plan, and write the necessary code.'\n"
                     "   c. Use email.send to send the full handoff spec to j_scott_vogel@yahoo.com with the subject: '[Milo Handoff] {capability name} — {date}'.\n"
-                    "   d. Use memory.write to write an 'event' memory entry recording the gap identified, handoff filed, timestamp, and the exact idempotency key used in step 3a.\n"
+                    "   d. Use memory.write to write an 'event' memory entry recording the gap identified, handoff filed, timestamp, and the exact idempotency key used in step 4a.\n"
                     "Do not output any chat messages or push notifications unless a new handoff is filed."
                 )
                 await runner.run_autonomous_turn(prompt)
