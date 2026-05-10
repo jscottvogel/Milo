@@ -15,6 +15,14 @@ interface FeedItem {
 import { useQuery } from "@tanstack/react-query";
 import { fetchDashboard } from "@/lib/api";
 
+const ICONS: Record<string, any> = {
+  approval: CheckCircle,
+  overdue: Clock,
+  email: Mail,
+  risk: AlertTriangle,
+  decision: FileText,
+};
+
 export function AttentionRequiredFeed() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
