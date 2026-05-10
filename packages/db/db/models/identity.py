@@ -16,6 +16,7 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     slug: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     plan: Mapped[str] = mapped_column(String, nullable=False, default="solo")
+    integration_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         server_default=func.now()
     )
