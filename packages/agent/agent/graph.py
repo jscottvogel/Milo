@@ -19,22 +19,29 @@ async def milo_agent(state: AgentState, config: RunnableConfig):
     system_prompt = state["system_prompt"]
     bedrock_tools = runner._format_tools_for_bedrock()
 
-    formatted_messages: list[dict[str, Any]] = []
+    raw_formatted: list[dict[str, Any]] = []
+    
+    # Pre-index all ToolMessages so we can inject them immediately after their AIMessage
+    tool_results_by_id = {}
+    for m in recent_messages:
+        if isinstance(m, ToolMessage):
+            tool_results_by_id[m.tool_call_id] = str(m.content)
+
     for m in recent_messages:
         if isinstance(m, HumanMessage):
-            formatted_messages.append({"role": "user", "content": [{"text": m.content}]})
+            raw_formatted.append({"role": "user", "content": [{"text": m.content}]})
+        elif isinstance(m, ToolMessage):
+            # Skip ToolMessages here because we manually attach them right after the AIMessage that spawned them
+            pass
         elif isinstance(m, AIMessage):
             content: list[dict[str, Any]] = []
             if m.content:
                 content.append({"text": m.content})
+                
+            tool_results_to_append = []
             if hasattr(m, "tool_calls") and m.tool_calls:
-                # Only send tool calls to Bedrock if they have a corresponding ToolMessage result
-                resolved_tc_ids = {
-                    msg.tool_call_id for msg in recent_messages
-                    if isinstance(msg, ToolMessage)
-                }
                 for tc in m.tool_calls:
-                    if tc["id"] in resolved_tc_ids:
+                    if tc["id"] in tool_results_by_id:
                         content.append({
                             "toolUse": {
                                 "toolUseId": tc["id"],
@@ -42,22 +49,35 @@ async def milo_agent(state: AgentState, config: RunnableConfig):
                                 "input": tc["args"]
                             }
                         })
+                        tool_results_to_append.append({
+                            "toolResult": {
+                                "toolUseId": tc["id"],
+                                "content": [{"text": tool_results_by_id[tc["id"]]}]
+                            }
+                        })
+                        
             if content:
-                formatted_messages.append({"role": "assistant", "content": content})
-        elif isinstance(m, ToolMessage):
-            tool_result_block = {
-                "toolResult": {
-                    "toolUseId": m.tool_call_id,
-                    "content": [{"text": str(m.content)}]
-                }
-            }
-            if formatted_messages and formatted_messages[-1]["role"] == "user" and any("toolResult" in c for c in formatted_messages[-1]["content"]):
-                formatted_messages[-1]["content"].append(tool_result_block)
+                raw_formatted.append({"role": "assistant", "content": content})
+            if tool_results_to_append:
+                raw_formatted.append({"role": "user", "content": tool_results_to_append})
+
+    formatted_messages: list[dict[str, Any]] = []
+    for msg in raw_formatted:
+        if not formatted_messages:
+            formatted_messages.append(msg)
+        else:
+            if formatted_messages[-1]["role"] == msg["role"]:
+                formatted_messages[-1]["content"].extend(msg["content"])
             else:
-                formatted_messages.append({
-                    "role": "user",
-                    "content": [tool_result_block]
-                })
+                formatted_messages.append(msg)
+
+    # AWS Bedrock Converse API requires that if the array starts with 'assistant', we must prepend a dummy 'user' message
+    if formatted_messages and formatted_messages[0]["role"] == "assistant":
+        formatted_messages.insert(0, {"role": "user", "content": [{"text": "Hello"}]})
+
+    # AWS Bedrock Converse API requires that the conversation MUST end with a user message
+    if formatted_messages and formatted_messages[-1]["role"] == "assistant":
+        formatted_messages.append({"role": "user", "content": [{"text": "Please continue."}]})
 
     stream = runner.llm.invoke_with_streaming(
         messages=formatted_messages,
