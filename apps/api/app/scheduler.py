@@ -3,6 +3,7 @@ import uuid
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, select
 
@@ -191,6 +192,51 @@ async def run_morning_briefing():
     except Exception as e:
         logger.error(f"Error executing morning briefing: {e}")
 
+async def run_hourly_monitor():
+    logger.info("Executing Hourly Program Monitor for all tenants...")
+    db_url = settings.DATABASE_URL
+    if db_url.startswith("postgresql://"): db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    elif db_url.startswith("postgresql+asyncpg://"): db_url = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    engine = create_engine(db_url)
+    
+    try:
+        with Session(engine) as db:
+            tenants = db.execute(select(Tenant)).scalars().all()
+            for tenant in tenants:
+                milo = db.execute(select(Milo).where(Milo.tenant_id == tenant.id)).scalar_one_or_none()
+                if not milo or not getattr(milo, 'hourly_monitor_enabled', True):
+                    logger.info(f"Hourly monitor disabled for tenant {tenant.id}")
+                    continue
+                
+                logger.info(f"Executing hourly monitor for tenant {tenant.id}")
+                
+                thread_id = str(uuid.uuid4())
+                thread = Thread(id=uuid.UUID(thread_id), tenant_id=tenant.id, milo_id=milo.id, summary="Hourly Monitor Autonomous Run")
+                db.add(thread)
+                db.commit()
+                
+                runner = AgentRunner(
+                    session=db,
+                    tenant_id=str(tenant.id),
+                    thread_id=thread_id,
+                    milo_id=str(milo.id)
+                )
+                
+                prompt = (
+                    "Autonomous Trigger: It is time for the Hourly Program Monitor & Engineering Handoff loop. Please strictly follow these steps:\n"
+                    "1. Use work_item.read to read all root items (include_children: true) and identify overdue tasks, stalled milestones, unresolved risks, and missing owners.\n"
+                    "2. Use memory.search to audit the current capability map against confirmed COMPLETED_ handoffs. Identify any capability that is missing or not yet handed off.\n"
+                    "3. For each gap identified:\n"
+                    "   a. Use memory.search to check if an idempotency key like 'hourly_handoff_{capability_slug}_{YYYY-MM-DD}' exists. If it exists in the last 24 hours, SKIP IT.\n"
+                    "   b. If new, use developer.handoff to generate a structured requirements doc. Also use storage.write to save a copy to 'engineering_requests/{slug}.md'.\n"
+                    "   c. Use email.send to send the full handoff spec to j_scott_vogel@yahoo.com with the subject: '[Milo Handoff] {capability name} — {date}'.\n"
+                    "   d. Use memory.write to write an 'event' memory entry recording the gap identified, handoff filed, timestamp, and the exact idempotency key used in step 3a.\n"
+                    "Do not output any chat messages or push notifications unless a new handoff is filed."
+                )
+                await runner.run_autonomous_turn(prompt)
+    except Exception as e:
+        logger.error(f"Error executing hourly monitor: {e}")
+
 def start_scheduler():
     # Triggers evaluation (e.g. every hour)
     eval_cron = os.environ.get("SCHEDULE_EVALUATE_TRIGGERS", "0 * * * *")  # Hourly
@@ -217,6 +263,14 @@ def start_scheduler():
         run_weekly_review,
         CronTrigger(day_of_week='mon', hour=9, minute=0),
         id="weekly_review",
+        replace_existing=True
+    )
+        
+    scheduler.add_job(
+        run_hourly_monitor,
+        IntervalTrigger(hours=1),
+        id="hourly_monitor",
+        name="Hourly Program Monitor",
         replace_existing=True
     )
         
