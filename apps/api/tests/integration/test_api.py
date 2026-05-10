@@ -5,10 +5,20 @@ from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
-def test_health():
+def test_health_ok():
     response = client.get("/v1/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"api": "ok", "database": "ok"}
+
+
+def test_health_db_error(mocker):
+    mocker.patch(
+        "apps.api.app.routers.health.create_engine",
+        side_effect=Exception("DB connection failed"),
+    )
+    response = client.get("/v1/health")
+    assert response.status_code == 503
+    assert response.json() == {"api": "ok", "database": "error"}
 
 def test_get_me_unauthorized():
     response = client.get("/v1/me")

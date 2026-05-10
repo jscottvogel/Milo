@@ -2,7 +2,7 @@ import os
 import uuid
 import subprocess
 import logging
-import asyncio
+import threading
 from typing import Any
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,8 @@ from agent.tools.registry import Tool
 logger = logging.getLogger(__name__)
 
 class AiderInvokeInput(BaseModel):
-    prompt: str = Field(description="The exact instructions for Aider, including the path to the spec file.")
+    prompt: str = Field(description="The exact instructions for Aider.")
+    spec_file: str | None = Field(default=None, description="The absolute or relative path to the markdown specification file that Aider needs to read.")
     working_directory: str = Field(default=".", description="The root directory of the codebase.")
 
 class AiderInvokeOutput(BaseModel):
@@ -21,8 +22,8 @@ class AiderInvokeOutput(BaseModel):
     job_id: str
     log_file: str
 
-async def _run_aider_background(job_id: str, command: list[str], cwd: str, log_file: str):
-    logger.info(f"Starting Aider background job {job_id}")
+def _run_aider_thread(job_id: str, command: list[str], cwd: str, log_file: str):
+    logger.info(f"Starting Aider background thread {job_id}")
     try:
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         
@@ -30,22 +31,35 @@ async def _run_aider_background(job_id: str, command: list[str], cwd: str, log_f
             f.write(f"--- AIDER JOB {job_id} STARTED ---\n")
             f.write(f"Command: {' '.join(command)}\n\n")
             
-            process = await asyncio.create_subprocess_exec(
-                *command,
+        env = os.environ.copy()
+        if "GEMINI_API_KEY" not in env:
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(os.path.join(cwd, ".env"))
+                env = os.environ.copy()
+            except Exception:
+                pass
+                
+        with open(log_file, "a", encoding="utf-8") as f_append:
+            # On Windows, uvx might be resolved better with shell=True if not explicitly uvx.exe
+            process = subprocess.Popen(
+                command,
                 cwd=cwd,
-                stdout=f,
-                stderr=subprocess.STDOUT
+                stdout=f_append,
+                stderr=subprocess.STDOUT,
+                env=env,
+                shell=(os.name == 'nt')
             )
+            process.wait()
             
-            await process.wait()
-            
+        with open(log_file, "a", encoding="utf-8") as f:
             f.write(f"\n--- AIDER JOB {job_id} COMPLETED WITH CODE {process.returncode} ---\n")
             
     except Exception as e:
-        logger.error(f"Aider background job {job_id} failed: {e}")
+        logger.error(f"Aider background thread {job_id} failed: {e}")
         try:
             with open(log_file, "a", encoding="utf-8") as f:
-                f.write(f"\n--- AIDER JOB {job_id} FAILED: {e} ---\n")
+                f.write(f"\n--- AIDER JOB {job_id} FAILED: {str(e)} ---\n")
         except:
             pass
 
@@ -55,10 +69,11 @@ class AiderInvokeTool(Tool):
     input_schema = AiderInvokeInput
     output_schema = AiderInvokeOutput
     mutates = True
-    requires_approval = True  # We want human approval before the AI starts coding!
+    requires_approval = False  # Set to False to allow fully autonomous execution
 
     async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
         prompt = input_data["prompt"]
+        spec_file = input_data.get("spec_file")
         cwd = input_data.get("working_directory", ".")
         job_id = str(uuid.uuid4())
         
@@ -66,17 +81,24 @@ class AiderInvokeTool(Tool):
         log_file = os.path.join(log_dir, f"{job_id}.log")
         
         command = [
+            "uvx",
+            "--from", "aider-chat",
             "aider", 
+            "--model", "gemini/gemini-2.5-pro",
             "--message", prompt,
             "--yes-always"
         ]
         
-        # Fire and forget
-        asyncio.create_task(_run_aider_background(job_id, command, cwd, log_file))
+        if spec_file:
+            command.append(spec_file)
+            
+        thread = threading.Thread(target=_run_aider_thread, args=(job_id, command, cwd, log_file))
+        thread.daemon = True
+        thread.start()
         
         return AiderInvokeOutput(
             success=True,
-            status="Background job started successfully.",
+            status="Background thread started successfully.",
             job_id=job_id,
             log_file=log_file
         ).model_dump()

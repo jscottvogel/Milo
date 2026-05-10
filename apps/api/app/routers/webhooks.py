@@ -75,3 +75,70 @@ async def receive_nylas_webhook(request: Request, background_tasks: BackgroundTa
     background_tasks.add_task(process_nylas_webhook, payload)
     
     return {"status": "ok"}
+
+async def process_external_webhook(source: str, payload: dict):
+    import os
+    from sqlalchemy import create_engine
+    db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/milo")
+    engine = create_engine(db_url)
+    
+    try:
+        with Session(engine) as db:
+            # For PoC, route to the first tenant. In a real system, look up tenant by webhook URL token or payload origin.
+            tenant = db.execute(select(Tenant)).scalar_one_or_none()
+            if not tenant: return
+            milo = db.execute(select(Milo).where(Milo.tenant_id == tenant.id)).scalar_one_or_none()
+            if not milo: return
+                
+            runner = AgentRunner(
+                session=db,
+                tenant_id=str(tenant.id),
+                thread_id=str(uuid.uuid4()),
+                milo_id=str(milo.id)
+            )
+            
+            prompt = None
+            if source == "github":
+                # Detect PR merge
+                action = payload.get("action")
+                if "pull_request" in payload:
+                    pr = payload["pull_request"]
+                    if action == "closed" and pr.get("merged"):
+                        prompt = f"[SYSTEM NOTIFICATION - GITHUB WEBHOOK] A Pull Request was merged: '{pr.get('title')}'. Please check your memory for any linked work items and update their status to 'complete'."
+            elif source == "jira":
+                # Detect status change
+                issue_event_type = payload.get("webhookEvent")
+                if issue_event_type == "jira:issue_updated":
+                    issue = payload.get("issue", {})
+                    key = issue.get("key")
+                    status = issue.get("fields", {}).get("status", {}).get("name")
+                    prompt = f"[SYSTEM NOTIFICATION - JIRA WEBHOOK] Jira issue {key} status changed to '{status}'. Please sync this to the linked Milo work item."
+            elif source == "slack":
+                # Handle Slack message event
+                event = payload.get("event", {})
+                if event.get("type") == "message" and "bot_id" not in event:
+                    text = event.get("text", "")
+                    prompt = f"[SYSTEM NOTIFICATION - SLACK WEBHOOK] New message received in Slack: '{text}'. Please review."
+            
+            if prompt:
+                logger.info(f"Waking up Milo via {source.capitalize()} Webhook...")
+                await runner.run_autonomous_turn(prompt)
+
+    except Exception as e:
+        logger.error(f"Error processing {source} webhook: {str(e)}")
+
+@router.post("/{source}")
+async def receive_external_webhook(source: str, request: Request, background_tasks: BackgroundTasks):
+    """Receive external webhook events from GitHub, Slack, or Jira."""
+    valid_sources = ["github", "slack", "jira"]
+    if source not in valid_sources:
+        raise HTTPException(status_code=400, detail="Invalid source")
+        
+    payload = await request.json()
+    logger.info(f"Received {source.capitalize()} webhook")
+    
+    # Offload processing to a background task
+    background_tasks.add_task(process_external_webhook, source, payload)
+    
+    return {"status": "ok"}
+

@@ -38,7 +38,7 @@ class AgentRunner:
         self.integration_tokens = self._load_integration_tokens()
         self.langfuse = Langfuse() if os.getenv("LANGFUSE_PUBLIC_KEY") else None
 
-    def _load_integration_tokens(self) -> dict[str, str]:
+    def _load_integration_tokens(self) -> dict[str, Any]:
         tokens = {}
         
         # Load from environment variables (which should be set via .env)
@@ -49,6 +49,16 @@ class AgentRunner:
         nylas_org_id = os.getenv("NYLAS_ORG_ID")
         if nylas_org_id:
             tokens["nylas_org_id"] = nylas_org_id
+
+        try:
+            from db.models.identity import Tenant
+            tenant_uuid = uuid.UUID(self.tenant_id) if isinstance(self.tenant_id, str) else self.tenant_id
+            tenant = self.session.get(Tenant, tenant_uuid)
+            if tenant and tenant.integration_config:
+                tokens.update(tenant.integration_config)
+        except Exception as e:
+            logger.debug(f"Failed to load integration config from DB: {e}")
+            
         try:
             ssm = boto3.client('ssm', region_name='us-east-1')
             param_name = f"/milo/tenants/{self.tenant_id}/integrations/gmail/token"
@@ -56,6 +66,29 @@ class AgentRunner:
             tokens['gmail'] = response['Parameter']['Value']
         except Exception as e:
             logger.debug(f"Failed to load integration tokens from SSM: {e}")
+            
+        try:
+            secrets = boto3.client('secretsmanager', region_name='us-east-1')
+            for integration in ["slack", "jira", "github"]:
+                try:
+                    secret_name = f"milo/{self.tenant_id}/{integration}"
+                    response = secrets.get_secret_value(SecretId=secret_name)
+                    secret_string = response.get('SecretString', '{}')
+                    import json
+                    try:
+                        secret_dict = json.loads(secret_string)
+                        tokens.update(secret_dict)
+                    except json.JSONDecodeError:
+                        # Fallback if it's just a raw token string
+                        if integration == "slack":
+                            tokens["slack_bot_token"] = secret_string
+                        elif integration == "github":
+                            tokens["github_token"] = secret_string
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"Failed to load integration tokens from Secrets Manager: {e}")
+            
         return tokens
         
     def _clean_schema_for_bedrock(self, schema: dict[str, Any]):

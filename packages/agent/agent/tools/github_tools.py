@@ -1,110 +1,140 @@
+import logging
+import httpx
 from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
-# Assuming the use of langchain_core.tools.tool or a similar decorator in the agent runtime
-# If using the internal registry, you may adapt these to subclass `Tool` like EmailSendTool
-def tool(*args, **kwargs):
-    # Dummy decorator to allow this file to act as a stub if langchain is not imported
-    def wrapper(func):
-        return func
-    return wrapper
+from agent.tools.context import AgentContext
+from agent.tools.registry import Tool
 
-class ReadIssuesInput(BaseModel):
+logger = logging.getLogger(__name__)
+
+MCP_URL = "http://localhost:8001/services/mcp/github"
+
+class GithubReadInput(BaseModel):
+    action: str = Field(description="The read action to perform: 'read_issues', 'read_pull_requests', 'read_ci_status', or 'read_commits'")
     repo: str = Field(description="The GitHub repository in 'owner/repo' format")
-    state: str = Field(default="open", description="State of issues: 'open', 'closed', or 'all'")
-    labels: Optional[List[str]] = Field(default=None, description="Optional list of label names to filter by")
-    limit: int = Field(default=25, description="Maximum number of issues to return")
+    state: str = Field(default="open", description="State filter for issues or PRs ('open', 'closed', 'all')")
+    branch: Optional[str] = Field(default=None, description="The branch name, required for 'read_ci_status' or 'read_commits'")
+    labels: Optional[List[str]] = Field(default=None, description="List of labels to filter issues by")
+    limit: int = Field(default=25, description="Maximum number of items to return")
 
-@tool("github__read_issues")
-async def github__read_issues(input_data: ReadIssuesInput, context: Any = None) -> dict:
-    """
-    Read issues from a GitHub repository.
-    Returns a list of issues including id, number, title, body, state, labels, assignees, created_at, updated_at, and url.
-    """
-    # TODO: Implement HTTP POST to /services/mcp/github/read_issues
-    return {"result": []}
+class GithubReadOutput(BaseModel):
+    success: bool
+    data: Any
+    error: Optional[str] = None
 
-class ReadPullRequestsInput(BaseModel):
+class GithubReadTool(Tool):
+    name = "github__read"
+    description = "Read information from GitHub, including issues, pull requests, CI status, and commits."
+    input_schema = GithubReadInput
+    output_schema = GithubReadOutput
+    mutates = False
+    requires_approval = False
+
+    async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
+        action = input_data["action"]
+        valid_actions = ["read_issues", "read_pull_requests", "read_ci_status", "read_commits"]
+        
+        if action not in valid_actions:
+            return GithubReadOutput(success=False, data=None, error=f"Invalid action. Must be one of {valid_actions}").model_dump()
+            
+        endpoint = f"{MCP_URL}/{action}"
+        
+        # Build payload matching the MCP input schema
+        payload = {"repo": input_data["repo"]}
+        if action in ["read_issues", "read_pull_requests"]:
+            payload["state"] = input_data.get("state", "open")
+            payload["limit"] = input_data.get("limit", 25)
+            if action == "read_issues" and input_data.get("labels"):
+                payload["labels"] = input_data["labels"]
+        elif action in ["read_ci_status", "read_commits"]:
+            if not input_data.get("branch"):
+                return GithubReadOutput(success=False, data=None, error="branch is required for this action").model_dump()
+            payload["branch"] = input_data["branch"]
+            if action == "read_commits":
+                payload["limit"] = input_data.get("limit", 20)
+
+        try:
+            async with httpx.AsyncClient() as client:
+                headers = {"Authorization": f"Bearer dev_{context.tenant_id}"}
+                resp = await client.post(endpoint, json=payload, headers=headers, timeout=15.0)
+                
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return GithubReadOutput(success=True, data=data.get("result")).model_dump()
+                else:
+                    return GithubReadOutput(success=False, data=None, error=resp.text).model_dump()
+        except Exception as e:
+            logger.error(f"Error calling GitHub MCP {action}: {e}")
+            return GithubReadOutput(success=False, data=None, error=str(e)).model_dump()
+
+class GithubWriteInput(BaseModel):
+    action: str = Field(description="The write action to perform: 'create_issue', 'create_branch', or 'post_comment'")
     repo: str = Field(description="The GitHub repository in 'owner/repo' format")
-    state: str = Field(default="open", description="State of PRs: 'open', 'closed', or 'merged'")
-    limit: int = Field(default=25, description="Maximum number of pull requests to return")
+    # create_issue fields
+    title: Optional[str] = Field(default=None, description="Issue title")
+    body: Optional[str] = Field(default=None, description="Issue or comment body")
+    labels: Optional[List[str]] = Field(default=None, description="List of labels for the issue")
+    assignees: Optional[List[str]] = Field(default=None, description="List of assignees for the issue")
+    # create_branch fields
+    branch_name: Optional[str] = Field(default=None, description="The name of the new branch")
+    from_branch: Optional[str] = Field(default="main", description="The base branch to branch off of")
+    # post_comment fields
+    issue_or_pr_number: Optional[int] = Field(default=None, description="The issue or PR number to comment on")
 
-@tool("github__read_pull_requests")
-async def github__read_pull_requests(input_data: ReadPullRequestsInput, context: Any = None) -> dict:
-    """
-    Read pull requests from a GitHub repository.
-    Returns a list of PRs including head_branch, base_branch, author, reviewers, and ci_status.
-    """
-    # TODO: Implement HTTP POST to /services/mcp/github/read_pull_requests
-    return {"result": []}
+class GithubWriteOutput(BaseModel):
+    success: bool
+    data: Any
+    error: Optional[str] = None
 
-class ReadCiStatusInput(BaseModel):
-    repo: str = Field(description="The GitHub repository in 'owner/repo' format")
-    branch: str = Field(description="The branch name to check CI status for (e.g., 'main')")
+class GithubWriteTool(Tool):
+    name = "github__write"
+    description = "Write data to GitHub, including creating issues, branching, and posting PR/issue comments."
+    input_schema = GithubWriteInput
+    output_schema = GithubWriteOutput
+    mutates = True
+    requires_approval = True  # We generally want approval before mutating GitHub
 
-@tool("github__read_ci_status")
-async def github__read_ci_status(input_data: ReadCiStatusInput, context: Any = None) -> dict:
-    """
-    Read CI check-run status for a specific branch.
-    Returns the branch, overall status (success|failure|pending|unknown), and individual workflow runs.
-    """
-    # TODO: Implement HTTP POST to /services/mcp/github/read_ci_status
-    return {"result": {}}
+    async def invoke(self, input_data: dict[str, Any], context: AgentContext) -> Any:
+        action = input_data["action"]
+        valid_actions = ["create_issue", "create_branch", "post_comment"]
+        
+        if action not in valid_actions:
+            return GithubWriteOutput(success=False, data=None, error=f"Invalid action. Must be one of {valid_actions}").model_dump()
+            
+        endpoint = f"{MCP_URL}/{action}"
+        payload = {"repo": input_data["repo"]}
+        
+        if action == "create_issue":
+            if not input_data.get("title") or not input_data.get("body"):
+                return GithubWriteOutput(success=False, data=None, error="title and body are required to create an issue").model_dump()
+            payload["title"] = input_data["title"]
+            payload["body"] = input_data["body"]
+            if input_data.get("labels"):
+                payload["labels"] = input_data["labels"]
+            if input_data.get("assignees"):
+                payload["assignees"] = input_data["assignees"]
+        elif action == "create_branch":
+            if not input_data.get("branch_name"):
+                return GithubWriteOutput(success=False, data=None, error="branch_name is required to create a branch").model_dump()
+            payload["branch_name"] = input_data["branch_name"]
+            payload["from_branch"] = input_data.get("from_branch", "main")
+        elif action == "post_comment":
+            if not input_data.get("body") or not input_data.get("issue_or_pr_number"):
+                return GithubWriteOutput(success=False, data=None, error="body and issue_or_pr_number are required to post a comment").model_dump()
+            payload["body"] = input_data["body"]
+            payload["issue_or_pr_number"] = input_data["issue_or_pr_number"]
 
-class CreateIssueInput(BaseModel):
-    repo: str = Field(description="The GitHub repository in 'owner/repo' format")
-    title: str = Field(description="Title of the issue")
-    body: str = Field(description="Markdown body of the issue")
-    labels: Optional[List[str]] = Field(default=None, description="Optional list of labels to apply")
-    assignees: Optional[List[str]] = Field(default=None, description="Optional list of GitHub usernames to assign")
-
-@tool("github__create_issue")
-async def github__create_issue(input_data: CreateIssueInput, context: Any = None) -> dict:
-    """
-    Create a new issue in a GitHub repository.
-    Returns the new issue's id, number, url, title, and state.
-    """
-    # TODO: Implement HTTP POST to /services/mcp/github/create_issue
-    return {"result": {}}
-
-class CreateBranchInput(BaseModel):
-    repo: str = Field(description="The GitHub repository in 'owner/repo' format")
-    branch_name: str = Field(description="Name of the new branch")
-    from_branch: str = Field(default="main", description="Base branch to create from")
-
-@tool("github__create_branch")
-async def github__create_branch(input_data: CreateBranchInput, context: Any = None) -> dict:
-    """
-    Create a new branch in a GitHub repository.
-    Returns the branch_name, sha, and url.
-    """
-    # TODO: Implement HTTP POST to /services/mcp/github/create_branch
-    return {"result": {}}
-
-class PostCommentInput(BaseModel):
-    repo: str = Field(description="The GitHub repository in 'owner/repo' format")
-    issue_or_pr_number: int = Field(description="The issue or pull request number to comment on")
-    body: str = Field(description="Markdown comment body")
-
-@tool("github__post_comment")
-async def github__post_comment(input_data: PostCommentInput, context: Any = None) -> dict:
-    """
-    Post a comment on a GitHub issue or pull request.
-    Returns the comment_id, url, and created_at timestamp.
-    """
-    # TODO: Implement HTTP POST to /services/mcp/github/post_comment
-    return {"result": {}}
-
-class ReadCommitsInput(BaseModel):
-    repo: str = Field(description="The GitHub repository in 'owner/repo' format")
-    branch: str = Field(default="main", description="The branch to read commits from")
-    limit: int = Field(default=20, description="Maximum number of commits to return")
-
-@tool("github__read_commits")
-async def github__read_commits(input_data: ReadCommitsInput, context: Any = None) -> dict:
-    """
-    Read commits from a GitHub repository branch.
-    Returns sha, message, author, timestamp, url, and files_changed.
-    """
-    # TODO: Implement HTTP POST to /services/mcp/github/read_commits
-    return {"result": []}
+        try:
+            async with httpx.AsyncClient() as client:
+                headers = {"Authorization": f"Bearer dev_{context.tenant_id}"}
+                resp = await client.post(endpoint, json=payload, headers=headers, timeout=15.0)
+                
+                if resp.status_code in (200, 201):
+                    data = resp.json()
+                    return GithubWriteOutput(success=True, data=data.get("result")).model_dump()
+                else:
+                    return GithubWriteOutput(success=False, data=None, error=resp.text).model_dump()
+        except Exception as e:
+            logger.error(f"Error calling GitHub MCP {action}: {e}")
+            return GithubWriteOutput(success=False, data=None, error=str(e)).model_dump()
