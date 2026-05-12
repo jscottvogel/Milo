@@ -1,0 +1,25 @@
+{
+  "name": "mcp-feature-implementer",
+  "version": "1.0.0",
+  "description": "MCP server that implements features autonomously",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@modelcontextprotocol/sdk": "^1.0.1",
+    "diff": "^7.0.0",
+    "ignore": "^6.0.2",
+    "uuid": "^11.0.3",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@types/diff": "^6.0.0",
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.6.3"
+  }
+}

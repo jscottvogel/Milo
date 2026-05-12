@@ -29,18 +29,24 @@ async def list_jobs():
         ))
     return JobListOutput(jobs=job_list)
 
+from fastapi import BackgroundTasks
+
 @router.post("/{job_id}/trigger")
-async def trigger_job(job_id: str):
+async def trigger_job(job_id: str, background_tasks: BackgroundTasks):
     job = scheduler.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    try:
-        if inspect.iscoroutinefunction(job.func):
-            await job.func(*job.args, **job.kwargs)
-        else:
-            job.func(*job.args, **job.kwargs)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    async def run_it():
+        try:
+            if inspect.iscoroutinefunction(job.func):
+                await job.func(*job.args, **job.kwargs)
+            else:
+                job.func(*job.args, **job.kwargs)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Manual job trigger failed: {e}")
+
+    background_tasks.add_task(run_it)
         
-    return {"status": "success", "message": f"Job {job_id} triggered successfully."}
+    return {"status": "success", "message": f"Job {job_id} triggered successfully and is running in the background."}
