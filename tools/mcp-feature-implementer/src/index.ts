@@ -68,7 +68,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: unknown) => {
     }
   }
 
-  throw new Error(`Tool not found: ${request.params.name}`);
+  throw new Error(`Tool not found: ${req.params.name}`);
 });
 
 async function main() {

@@ -56,7 +56,7 @@ Rules:
 
     try {
       const response = await this.client.messages.create({
-        model: "claude-sonnet-4-20250514", // Model ID as specified by prompt
+        model: "claude-sonnet-4-6", // Model ID as specified by prompt
         max_tokens: 8192, // High token limit for large files
         system: systemPrompt,
         messages: [
