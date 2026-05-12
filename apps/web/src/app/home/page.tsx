@@ -33,7 +33,7 @@ export default function HomeDashboard() {
         <div className="xl:col-span-2 flex flex-col h-full">
           <div className="flex justify-between items-center mb-4 shrink-0">
             <h2 className="text-lg font-semibold text-white">Active Programs</h2>
-            <button className="text-sm text-primary hover:text-primary/80 transition-colors">View All</button>
+            <button suppressHydrationWarning className="text-sm text-primary hover:text-primary/80 transition-colors">View All</button>
           </div>
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
             <PortfolioHealthStrip />

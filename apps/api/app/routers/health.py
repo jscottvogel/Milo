@@ -10,7 +10,7 @@ def health_check(response: Response):
     db_ok = False
     try:
         settings = Settings()
-        engine = create_engine(str(settings.database_url), connect_args={"connect_timeout": 3})
+        engine = create_engine(str(settings.DATABASE_URL), connect_args={"connect_timeout": 3})
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
         db_ok = True

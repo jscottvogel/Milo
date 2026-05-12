@@ -79,7 +79,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             
             if (item.path === '/chat') {
               return (
-                <button
+                <button suppressHydrationWarning
                   key={item.path}
                   onClick={toggleRightRail}
                   className="w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group relative text-muted-foreground hover:bg-white/5 hover:text-white"
@@ -148,7 +148,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
 
           {/* Right Actions */}
           <div className="flex items-center gap-4">
-            <button 
+            <button suppressHydrationWarning
               onClick={() => setSearchOpen(true)}
               className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md transition-colors border border-white/5"
             >
@@ -156,11 +156,11 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
               <span>Search...</span>
               <kbd className="ml-4 text-[10px] bg-black/30 px-1.5 py-0.5 rounded border border-white/10">⌘K</kbd>
             </button>
-            <button className="sm:hidden p-2 text-muted-foreground hover:text-white" onClick={() => setSearchOpen(true)}>
+            <button suppressHydrationWarning className="sm:hidden p-2 text-muted-foreground hover:text-white" onClick={() => setSearchOpen(true)}>
               <Search className="w-5 h-5" />
             </button>
             
-            <button className="relative p-2 text-muted-foreground hover:text-white transition-colors rounded-full hover:bg-white/5">
+            <button suppressHydrationWarning className="relative p-2 text-muted-foreground hover:text-white transition-colors rounded-full hover:bg-white/5">
               <Bell className="w-5 h-5" />
               <span className="absolute top-1.5 right-2 w-2 h-2 bg-primary rounded-full" />
             </button>
