@@ -93,3 +93,4 @@ app.include_router(portfolio.router)
 # Trigger reload
 # Added key to env
 # Update model id
+# Removed aider references
