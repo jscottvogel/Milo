@@ -21,7 +21,7 @@ class JiraReadOutput(BaseModel):
     error: Optional[str] = None
 
 class JiraReadTool(Tool):
-    name = "jira__read"
+    name = "jira.read"
     description = "Read information from Jira, including specific issues or searching via JQL."
     input_schema = JiraReadInput
     output_schema = JiraReadOutput
@@ -93,7 +93,7 @@ class JiraWriteOutput(BaseModel):
     error: Optional[str] = None
 
 class JiraWriteTool(Tool):
-    name = "jira__write"
+    name = "jira.write"
     description = "Write data to Jira, including creating new issues and updating existing ones (e.g., changing status)."
     input_schema = JiraWriteInput
     output_schema = JiraWriteOutput

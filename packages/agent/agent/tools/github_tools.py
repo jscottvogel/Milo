@@ -8,7 +8,7 @@ from agent.tools.registry import Tool
 
 logger = logging.getLogger(__name__)
 
-MCP_URL = "http://localhost:8001/services/mcp/github"
+MCP_URL = "http://127.0.0.1:8000/v1/github"
 
 class GithubReadInput(BaseModel):
     action: str = Field(description="The read action to perform: 'read_issues', 'read_pull_requests', 'read_ci_status', or 'read_commits'")
@@ -24,7 +24,7 @@ class GithubReadOutput(BaseModel):
     error: Optional[str] = None
 
 class GithubReadTool(Tool):
-    name = "github__read"
+    name = "github.read"
     description = "Read information from GitHub, including issues, pull requests, CI status, and commits."
     input_schema = GithubReadInput
     output_schema = GithubReadOutput
@@ -88,7 +88,7 @@ class GithubWriteOutput(BaseModel):
     error: Optional[str] = None
 
 class GithubWriteTool(Tool):
-    name = "github__write"
+    name = "github.write"
     description = "Write data to GitHub, including creating issues, branching, and posting PR/issue comments."
     input_schema = GithubWriteInput
     output_schema = GithubWriteOutput

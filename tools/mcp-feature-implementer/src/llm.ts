@@ -55,22 +55,38 @@ Rules:
 - If tests exist for modified files, update them too`;
 
     try {
-      const response = await this.client.messages.create({
+      const stream = await this.client.messages.create({
         model: "claude-sonnet-4-6", // Model ID as specified by prompt
         max_tokens: 8192, // High token limit for large files
         system: systemPrompt,
         messages: [
           { role: "user", content: userPrompt }
         ],
+        stream: true,
       });
 
-      const textOutput = (response.content[0] as any).text.trim();
-      
+      let textOutput = "";
+      for await (const chunk of stream) {
+        if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
+          textOutput += chunk.delta.text;
+        }
+      }
+
+      textOutput = textOutput.trim();
+
       try {
-        const parsed = JSON.parse(textOutput) as LlmResponse;
+        const { jsonrepair } = require('jsonrepair');
+        const repaired = jsonrepair(textOutput);
+        const parsed = JSON.parse(repaired) as LlmResponse;
         return parsed;
       } catch (err) {
-        throw new Error("LLM returned invalid JSON. Output was: " + textOutput.substring(0, 500) + "...");
+        // Fallback to simple parse
+        try {
+            const parsed = JSON.parse(textOutput) as LlmResponse;
+            return parsed;
+        } catch (e) {
+            throw new Error("LLM returned invalid JSON. Output was: " + textOutput.substring(0, 500) + "...");
+        }
       }
     } catch (error: any) {
       throw new Error(`Failed to call Anthropic API: ${error.message}`);

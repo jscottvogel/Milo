@@ -67,7 +67,7 @@ export default function Settings() {
           <h1 className="text-2xl font-bold text-white mb-2">Workspace Settings</h1>
           <p className="text-muted-foreground">Manage your tenant configuration, integrations, and users.</p>
         </div>
-        <button 
+        <button suppressHydrationWarning
           onClick={handleSave}
           className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
         >
@@ -87,7 +87,7 @@ export default function Settings() {
             { id: 'data', icon: Database, label: 'Data & Privacy', active: false },
             { id: 'audit', icon: ShieldAlert, label: 'Audit Logs', active: false },
           ].map(item => (
-            <button key={item.id} className={cn(
+            <button suppressHydrationWarning key={item.id} className={cn(
               "w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors text-left",
               item.active ? "bg-white/10 text-white" : "text-muted-foreground hover:bg-white/5 hover:text-white"
             )}>
@@ -101,7 +101,7 @@ export default function Settings() {
             <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-4 px-4">Dev Tools: Persona Test</h3>
             <div className="px-4 space-y-2">
               <label className="text-xs text-muted-foreground block">Simulate Login As:</label>
-              <select 
+              <select suppressHydrationWarning
                 value={userRole}
                 onChange={(e) => setUserRole(e.target.value as UserRole)}
                 className="w-full bg-[#111115] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
@@ -123,12 +123,12 @@ export default function Settings() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-white mb-1.5">Workspace Name</label>
-                <input type="text" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="w-full max-w-md bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50" />
+                <input suppressHydrationWarning type="text" value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="w-full max-w-md bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50" />
               </div>
               <div className="grid grid-cols-2 gap-4 max-w-md">
                 <div>
                   <label className="block text-sm font-medium text-white mb-1.5">Timezone</label>
-                  <select className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50">
+                  <select suppressHydrationWarning className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50">
                     <option>America/Los_Angeles</option>
                     <option>America/New_York</option>
                     <option>UTC</option>
@@ -137,11 +137,11 @@ export default function Settings() {
                 <div>
                   <label className="block text-sm font-medium text-white mb-1.5">Daily Briefing</label>
                   <div className="flex gap-2">
-                    <select className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50">
+                    <select suppressHydrationWarning className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50">
                       <option>08:00 AM</option>
                       <option>09:00 AM</option>
                     </select>
-                    <button className="px-4 bg-primary/20 text-primary border border-primary/30 rounded-lg text-sm font-medium">On</button>
+                    <button suppressHydrationWarning className="px-4 bg-primary/20 text-primary border border-primary/30 rounded-lg text-sm font-medium">On</button>
                   </div>
                 </div>
               </div>
@@ -160,7 +160,7 @@ export default function Settings() {
                       <Check className="w-3 h-3" /> Connected
                     </span>
                   ) : (
-                    <button className="text-xs font-medium bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors">
+                    <button suppressHydrationWarning className="text-xs font-medium bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors">
                       Connect
                     </button>
                   )}
@@ -182,7 +182,7 @@ export default function Settings() {
                       {job.next_run_time && <span className="ml-2">Next Run: {new Date(job.next_run_time).toLocaleString()}</span>}
                     </div>
                   </div>
-                  <button 
+                  <button suppressHydrationWarning
                     onClick={() => handleTrigger(job.id)}
                     disabled={runningJob === job.id}
                     className="flex items-center gap-2 text-xs font-medium bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors disabled:opacity-50"
@@ -208,7 +208,7 @@ export default function Settings() {
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-white mb-1.5">Data Retention Policy</label>
-                <select className="w-full max-w-md bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50">
+                <select suppressHydrationWarning className="w-full max-w-md bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50">
                   <option>90 Days (Default)</option>
                   <option>1 Year</option>
                   <option>Indefinite (Requires Enterprise)</option>
@@ -219,10 +219,10 @@ export default function Settings() {
               <div className="pt-6 border-t border-white/10">
                 <label className="block text-sm font-medium text-white mb-2">Audit Log Export</label>
                 <div className="flex gap-3 max-w-md">
-                  <input type="date" className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50" />
+                  <input suppressHydrationWarning type="date" className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50" />
                   <span className="text-muted-foreground self-center">to</span>
-                  <input type="date" className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50" />
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-lg transition-colors flex items-center justify-center">
+                  <input suppressHydrationWarning type="date" className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary/50" />
+                  <button suppressHydrationWarning className="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-lg transition-colors flex items-center justify-center">
                     <Download className="w-4 h-4" />
                   </button>
                 </div>

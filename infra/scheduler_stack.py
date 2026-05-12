@@ -1,84 +1,143 @@
-from aws_cdk import (
-    Stack,
-    Duration,
-    aws_lambda as _lambda,
-    aws_events as events,
-    aws_events_targets as targets,
-    aws_iam as iam
-)
+"""Daily Briefing Scheduler Stack — AWS CDK Python.
+
+This stack provisions ONLY the daily morning briefing Lambda and its
+EventBridge rule. It is SEPARATE from the Hourly Program Monitor stack
+(infra/hourly_monitor_stack.py).
+
+Do NOT add hourly monitor resources to this stack.
+Do NOT merge with HourlyMonitorStack.
+"""
+from __future__ import annotations
+
+import aws_cdk as cdk
+import aws_cdk.aws_events as events
+import aws_cdk.aws_events_targets as targets
+import aws_cdk.aws_iam as iam
+import aws_cdk.aws_lambda as lambda_
+import aws_cdk.aws_logs as logs
 from constructs import Construct
 
-class SchedulerStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
-        super().__init__(scope, construct_id, **kwargs)
 
-        # Assuming shared VPC or DB access is needed, omitting for simplicity
-        # in a real setup, VPC and security groups would be configured here.
+class SchedulerStack(cdk.Stack):
+    """CloudFormation stack for the Daily Morning Briefing Lambda + EventBridge rule.
 
-        trigger_lambda = _lambda.Function(
-            self, "MiloTriggerLambda",
-            runtime=_lambda.Runtime.PYTHON_3_12,
-            code=_lambda.Code.from_asset("services/briefing"),
-            handler="handler.lambda_handler",
-            timeout=Duration.minutes(15), # LangGraph runs can take time
-            memory_size=1024,
-            environment={
-                # To be populated via secrets manager in a real deployment
-                "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/milo",
-                "ANTHROPIC_API_KEY": ""
-            }
+    This stack provisions:
+    - A dedicated IAM execution role for the briefing Lambda.
+    - A Lambda function that runs apps/api/briefing_handler.py.
+    - An EventBridge rule firing every day at 07:00 UTC.
+    - A CloudWatch Log Group with 7-day retention.
+
+    Args:
+        scope: CDK construct scope.
+        construct_id: Stack logical ID.
+        mode: 'poc' or 'prod'.
+        **kwargs: Passed to cdk.Stack.
+    """
+
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        *,
+        mode: str = "poc",
+        **kwargs: object,
+    ) -> None:
+        super().__init__(scope, construct_id, **kwargs)  # type: ignore[arg-type]
+
+        is_poc = mode == "poc"
+
+        # -----------------------------------------------------------------------
+        # CloudWatch Log Group
+        # -----------------------------------------------------------------------
+        log_group = logs.LogGroup(
+            self,
+            "BriefingLogGroup",
+            log_group_name="/milo/morning-briefing",
+            retention=logs.RetentionDays.ONE_WEEK,
+            removal_policy=cdk.RemovalPolicy.DESTROY if is_poc else cdk.RemovalPolicy.RETAIN,
         )
 
-        # Allow SSM parameters read for integration tokens
-        trigger_lambda.add_to_role_policy(
+        # -----------------------------------------------------------------------
+        # IAM Execution Role — separate from the hourly monitor Lambda role
+        # -----------------------------------------------------------------------
+        execution_role = iam.Role(
+            self,
+            "BriefingLambdaRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            description="Execution role for milo-morning-briefing Lambda. Separate from hourly monitor Lambda role.",
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "service-role/AWSLambdaBasicExecutionRole"
+                )
+            ],
+        )
+
+        execution_role.add_to_policy(
             iam.PolicyStatement(
-                actions=["ssm:GetParameter"],
-                resources=["arn:aws:ssm:*:*:parameter/milo/tenants/*/integrations/*"]
+                sid="BedrockInvoke",
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                ],
+                resources=["arn:aws:bedrock:*::foundation-model/*"],
             )
         )
 
-        # 1. Daily 7AM Morning Briefing (UTC approximation or EventBridge timezone support)
-        # EventBridge supports Cron expressions
-        morning_rule = events.Rule(
-            self, "MorningBriefingRule",
-            schedule=events.Schedule.cron(minute="0", hour="12"), # 7AM CDT approx (UTC)
+        execution_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="SecretsRead",
+                actions=["secretsmanager:GetSecretValue"],
+                resources=[
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:milo/*"
+                ],
+            )
         )
-        morning_rule.add_target(targets.LambdaFunction(
-            trigger_lambda,
-            event=events.RuleTargetInput.from_object({
-                "detail": {
-                    "tenant_id": "all",
-                    "trigger_type": "morning_briefing"
-                }
-            })
-        ))
 
-        # 2. Hourly Health Check
-        hourly_rule = events.Rule(
-            self, "HourlyHealthCheckRule",
-            schedule=events.Schedule.rate(Duration.hours(1)),
+        execution_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="ParameterStoreRead",
+                actions=["ssm:GetParameter", "ssm:GetParameters"],
+                resources=[
+                    f"arn:aws:ssm:{self.region}:{self.account}:parameter/milo/*"
+                ],
+            )
         )
-        hourly_rule.add_target(targets.LambdaFunction(
-            trigger_lambda,
-            event=events.RuleTargetInput.from_object({
-                "detail": {
-                    "tenant_id": "all",
-                    "trigger_type": "hourly_health_check"
-                }
-            })
-        ))
 
-        # 3. Stale Program Daily Scan
-        stale_rule = events.Rule(
-            self, "StaleProgramScanRule",
-            schedule=events.Schedule.cron(minute="0", hour="13"), # 8AM CDT
+        execution_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="S3TenantAccess",
+                actions=[
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:ListBucket",
+                ],
+                resources=[
+                    f"arn:aws:s3:::milo-tenants-{self.account}",
+                    f"arn:aws:s3:::milo-tenants-{self.account}/*",
+                ],
+            )
         )
-        stale_rule.add_target(targets.LambdaFunction(
-            trigger_lambda,
-            event=events.RuleTargetInput.from_object({
-                "detail": {
-                    "tenant_id": "all",
-                    "trigger_type": "stale_program_scan"
-                }
-            })
-        ))
+
+        # -----------------------------------------------------------------------
+        # Lambda Function — daily briefing only
+        # -----------------------------------------------------------------------
+        fn = lambda_.DockerImageFunction(
+            self,
+            "BriefingFunction",
+            function_name="milo-morning-briefing",
+            code=lambda_.DockerImageCode.from_image_asset(
+                "apps/api",
+                cmd=["briefing_handler.handler"],
+            ),
+            role=execution_role,
+            memory_size=1024,
+            timeout=cdk.Duration.minutes(14),
+            reserved_concurrent_executions=2 if is_poc else 10,
+            log_group=log_group,
+            environment={
+                "LOG_LEVEL": "INFO",
+            },
+            description="Daily Morning Briefing Lambda — separate from Hourly Monitor Lambda.",
+        )
+
+        #

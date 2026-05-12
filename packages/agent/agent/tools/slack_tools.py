@@ -19,7 +19,7 @@ class SlackSendOutput(BaseModel):
     error: Optional[str] = None
 
 class SlackSendTool(Tool):
-    name = "slack__send"
+    name = "slack.send"
     description = "Send a message or alert to a Slack channel."
     input_schema = SlackSendInput
     output_schema = SlackSendOutput
