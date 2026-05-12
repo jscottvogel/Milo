@@ -20,7 +20,7 @@ class MemorySearchOutput(BaseModel):
 
 
 class MemorySearchTool(Tool):
-    name = "memory.search"
+    name = "memory__search"
     description = "Search episodic memory using semantic vector search. Use this to recall past events, facts, or context for the current tenant."
     input_schema = MemorySearchInput
     output_schema = MemorySearchOutput
@@ -65,7 +65,7 @@ class MemoryWriteOutput(BaseModel):
 
 
 class MemoryWriteTool(Tool):
-    name = "memory.write"
+    name = "memory__write"
     description = "Write a new chunk to episodic memory. Use this to record important events, decisions, or facts that should be remembered."
     input_schema = MemoryWriteInput
     output_schema = MemoryWriteOutput

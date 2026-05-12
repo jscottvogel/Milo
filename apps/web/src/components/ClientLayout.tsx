@@ -28,26 +28,17 @@ const navItems = [
 ];
 
 import { useEffect } from 'react';
-import { fetchApprovals } from '@/lib/api';
+import { usePendingApprovals } from '@/hooks/usePendingApprovals';
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const { isRightRailOpen, pendingApprovalsCount, setPendingApprovalsCount, breadcrumbContext, setSearchOpen, toggleRightRail } = useAppStore();
   const pathname = usePathname();
 
+  const { count: pendingCount } = usePendingApprovals();
+  
   useEffect(() => {
-    const pollApprovals = async () => {
-      try {
-        const data = await fetchApprovals();
-        const pending = data.filter((a: any) => a.status === 'pending');
-        setPendingApprovalsCount(pending.length);
-      } catch (e) {
-        console.error("Failed to fetch approvals badge count:", e);
-      }
-    };
-    pollApprovals();
-    const interval = setInterval(pollApprovals, 15000); // 15s real-time poll
-    return () => clearInterval(interval);
-  }, [setPendingApprovalsCount]);
+    setPendingApprovalsCount(pendingCount);
+  }, [pendingCount, setPendingApprovalsCount]);
 
   // Basic breadcrumb fallback based on route if store is empty
   const defaultBreadcrumb = pathname.split('/').filter(Boolean).map(segment => ({

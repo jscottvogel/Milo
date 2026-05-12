@@ -109,7 +109,7 @@ class AgentRunner:
             self._clean_schema_for_bedrock(schema)
             tools.append({
                 "toolSpec": {
-                    "name": t.name.replace(".", "__"),
+                    "name": t.name,
                     "description": t.description,
                     "inputSchema": {
                         "json": schema

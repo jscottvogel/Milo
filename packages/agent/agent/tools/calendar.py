@@ -18,7 +18,7 @@ class CalendarReadOutput(BaseModel):
 
 
 class CalendarReadTool(Tool):
-    name = "calendar.read"
+    name = "calendar__read"
     description = "Read calendar events for the tenant within a given date range."
     input_schema = CalendarReadInput
     output_schema = CalendarReadOutput
@@ -92,7 +92,7 @@ class CalendarWriteOutput(BaseModel):
 
 
 class CalendarWriteTool(Tool):
-    name = "calendar.write"
+    name = "calendar__write"
     description = "Create a new calendar event on the primary calendar."
     input_schema = CalendarWriteInput
     output_schema = CalendarWriteOutput

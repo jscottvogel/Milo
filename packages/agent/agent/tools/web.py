@@ -16,7 +16,7 @@ class WebSearchOutput(BaseModel):
 
 
 class WebSearchTool(Tool):
-    name = "web.search"
+    name = "web__search"
     description = "Search the web for current information. Use this when you need facts or data not in memory."
     input_schema = WebSearchInput
     output_schema = WebSearchOutput
@@ -54,7 +54,7 @@ class WebFetchOutput(BaseModel):
 
 
 class WebFetchTool(Tool):
-    name = "web.fetch"
+    name = "web__fetch"
     description = "Fetch and extract text content from a web page URL."
     input_schema = WebFetchInput
     output_schema = WebFetchOutput

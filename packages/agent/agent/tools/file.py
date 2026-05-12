@@ -16,7 +16,7 @@ class FileReadOutput(BaseModel):
     metadata: dict[str, Any]
 
 class FileReadTool(Tool):
-    name = "file.read"
+    name = "file__read"
     description = "Read and parse the contents of a local file or storage path (supports PDF, DOCX, XLSX, PPTX, HTML, TXT, etc.) into Markdown."
     input_schema = FileReadInput
     output_schema = FileReadOutput

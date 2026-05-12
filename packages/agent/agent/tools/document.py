@@ -18,7 +18,7 @@ class DocumentGenerateOutput(BaseModel):
     status: str
 
 class DocumentGenerateTool(Tool):
-    name = "document.generate"
+    name = "document__generate"
     description = "Compile Markdown content into a rich formatted PDF, Word Document (DOCX), or PowerPoint (PPTX) file."
     input_schema = DocumentGenerateInput
     output_schema = DocumentGenerateOutput

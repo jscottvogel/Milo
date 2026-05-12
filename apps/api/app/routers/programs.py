@@ -37,6 +37,7 @@ class WorkItemResponse(BaseModel):
     actual_date: str | None = None
     metadata_json: dict | None = None
     dependencies: list[str] | None = None
+    program_name: str | None = None
 
 class RiskResponse(BaseModel):
     id: str
@@ -87,6 +88,8 @@ class DashboardResponse(BaseModel):
     next_up: list[WorkItemResponse]
     recently_completed: list[WorkItemResponse]
     high_risks: list[RiskResponse]
+    upcoming_milestones: list[WorkItemResponse] = []
+    overdue_milestones: list[WorkItemResponse] = []
 
 class WorkItemTreeResponse(WorkItemResponse):
     children: list["WorkItemTreeResponse"] = []
@@ -161,11 +164,45 @@ def get_dashboard(request: Request):
             impact=r.impact
         ))
 
+    # 5. Milestones
+    import datetime
+    now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+    
+    # helper to find program name
+    def get_program_name(parent_id):
+        if not parent_id: return None
+        curr = db.get(WorkItem, parent_id)
+        while curr and curr.item_type not in ('objective', 'initiative', 'project'):
+            if not curr.parent_id: break
+            curr = db.get(WorkItem, curr.parent_id)
+        return curr.name if curr else None
+
+    all_milestones = db.scalars(select(WorkItem).where(WorkItem.tenant_id == tenant_id, WorkItem.item_type == 'milestone', WorkItem.status != 'completed')).all()
+    overdue = [m for m in all_milestones if m.due_date and m.due_date < now]
+    upcoming = [m for m in all_milestones if m.due_date and m.due_date >= now]
+    
+    overdue.sort(key=lambda x: x.due_date.timestamp())
+    upcoming.sort(key=lambda x: x.due_date.timestamp())
+    
+    def map_milestone(m):
+        return WorkItemResponse(
+            id=str(m.id), name=m.name, item_type=m.item_type, status=m.status,
+            parent_id=str(m.parent_id) if m.parent_id else None,
+            description=m.description, owner_name=m.owner_name,
+            due_date=m.due_date.isoformat() if m.due_date else None,
+            program_name=get_program_name(m.parent_id)
+        )
+        
+    upcoming_milestones = [map_milestone(m) for m in upcoming[:5]]
+    overdue_milestones = [map_milestone(m) for m in overdue]
+
     return DashboardResponse(
         root_items=root_items,
         next_up=next_up,
         recently_completed=recently_completed,
-        high_risks=high_risks
+        high_risks=high_risks,
+        upcoming_milestones=upcoming_milestones,
+        overdue_milestones=overdue_milestones
     )
 
 

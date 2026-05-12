@@ -19,7 +19,7 @@ class WorkItemReadOutput(BaseModel):
 
 
 class WorkItemReadTool(Tool):
-    name = "work_item.read"
+    name = "work_item__read"
     description = "Read structured work item data including the 8-layer hierarchy, risks, decisions, and change requests."
     input_schema = WorkItemReadInput
     output_schema = WorkItemReadOutput
@@ -90,7 +90,7 @@ class WorkItemUpdateOutput(BaseModel):
 
 
 class WorkItemUpdateTool(Tool):
-    name = "work_item.update"
+    name = "work_item__update"
     description = "Update or create objectives, outcomes, key_results, initiatives, projects, workstreams, milestones, tasks, risks, decisions, or change_requests."
     input_schema = WorkItemUpdateInput
     output_schema = WorkItemUpdateOutput
@@ -216,7 +216,7 @@ class ProgramCriticalPathOutput(BaseModel):
 
 
 class ProgramCriticalPathTool(Tool):
-    name = "program.critical_path"
+    name = "program__critical_path"
     description = "Compute the critical path for a program, identifying zero-float tasks, duration, blocking relationships, and schedule risks. Allows what-if scenario slips."
     input_schema = ProgramCriticalPathInput
     output_schema = ProgramCriticalPathOutput

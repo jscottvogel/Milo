@@ -19,7 +19,7 @@ class StakeholderInviteOutput(BaseModel):
     stakeholder_sub: str
 
 class StakeholderInviteTool(Tool):
-    name = "stakeholder.invite"
+    name = "stakeholder__invite"
     description = "Invite a new or existing stakeholder to a program. This will trigger an email invitation with a magic link."
     input_schema = StakeholderInviteInput
     output_schema = StakeholderInviteOutput
@@ -90,7 +90,7 @@ class StakeholderSearchInput(BaseModel):
     limit: int = Field(20, description="Maximum number of stakeholders to return.")
 
 class StakeholderReadTool(Tool):
-    name = "stakeholder.read"
+    name = "stakeholder__read"
     description = "Read stakeholders for a program or fetch a specific stakeholder by ID."
     input_schema = StakeholderReadInput
     output_schema = None # Returns a list of stakeholders
@@ -116,7 +116,7 @@ class StakeholderReadTool(Tool):
                 raise ValueError(f"Failed to read stakeholders: {e}")
 
 class StakeholderSearchTool(Tool):
-    name = "stakeholder.search"
+    name = "stakeholder__search"
     description = "Search all stakeholders across all programs for the tenant by query, role, influence, interest, or status."
     input_schema = StakeholderSearchInput
     output_schema = None # Returns a list of stakeholders

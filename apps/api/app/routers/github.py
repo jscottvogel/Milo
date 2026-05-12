@@ -31,9 +31,7 @@ def get_github_token(tenant_id: str = None, force_refresh: bool = False) -> str:
             except json.JSONDecodeError:
                 _GITHUB_TOKEN = secret_string
         except Exception as e:
-            _GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-            if not _GITHUB_TOKEN:
-                raise RuntimeError(f"Failed to fetch GitHub token for {secret_name}: {e}")
+            _GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", None)
     return _GITHUB_TOKEN
 
 def build_headers(token: str) -> dict:
@@ -56,6 +54,9 @@ def check_rate_limit(response: httpx.Response, result: dict):
 
 async def github_request(method: str, path: str, tenant_id: str, **kwargs) -> tuple[dict, int, httpx.Response]:
     token = get_github_token(tenant_id)
+    if not token:
+        return {"message": "GitHub integration is not configured for this tenant."}, 400, None
+        
     headers = build_headers(token)
     
     # We create the client per request here since we can't easily rely on the global lifespan in the router
@@ -153,7 +154,7 @@ async def read_issues(request: Request, input_data: ReadIssuesInput):
         })
         
     result = {"result": issues[:input_data.limit]}
-    check_rate_limit(resp, result)
+    if resp: check_rate_limit(resp, result)
     return result
 
 @router.post("/read_pull_requests")
@@ -184,7 +185,7 @@ async def read_pull_requests(request: Request, input_data: ReadPullRequestsInput
         })
         
     result = {"result": prs}
-    check_rate_limit(resp, result)
+    if resp: check_rate_limit(resp, result)
     return result
 
 @router.post("/read_ci_status")
@@ -217,7 +218,7 @@ async def read_ci_status(request: Request, input_data: ReadCiStatusInput):
     } for run in check_runs]
     
     result = {"result": {"branch": input_data.branch, "status": overall_status, "workflow_runs": runs}}
-    check_rate_limit(resp, result)
+    if resp: check_rate_limit(resp, result)
     return result
 
 @router.post("/create_issue")
@@ -245,7 +246,7 @@ async def create_issue(request: Request, input_data: CreateIssueInput):
         "state": data.get("state")
     }
     result = {"result": res_data}
-    check_rate_limit(resp, result)
+    if resp: check_rate_limit(resp, result)
     return result
 
 @router.post("/create_branch")
@@ -273,7 +274,7 @@ async def create_branch(request: Request, input_data: CreateBranchInput):
         "url": data.get("url")
     }
     result = {"result": res_data}
-    check_rate_limit(resp, result)
+    if resp: check_rate_limit(resp, result)
     return result
 
 @router.post("/post_comment")
@@ -293,7 +294,7 @@ async def post_comment(request: Request, input_data: PostCommentInput):
         "created_at": data.get("created_at")
     }
     result = {"result": res_data}
-    check_rate_limit(resp, result)
+    if resp: check_rate_limit(resp, result)
     return result
 
 @router.post("/read_commits")
@@ -318,5 +319,5 @@ async def read_commits(request: Request, input_data: ReadCommitsInput):
         })
         
     result = {"result": commits}
-    check_rate_limit(resp, result)
+    if resp: check_rate_limit(resp, result)
     return result

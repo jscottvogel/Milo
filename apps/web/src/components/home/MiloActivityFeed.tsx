@@ -9,7 +9,7 @@ export function MiloActivityFeed() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['activities'],
     queryFn: fetchActivities,
-    refetchInterval: 15000,
+    refetchInterval: 120000, // 2 minutes
   });
 
   if (isLoading) {

@@ -45,7 +45,7 @@ async def milo_agent(state: AgentState, config: RunnableConfig):
                         content.append({
                             "toolUse": {
                                 "toolUseId": tc["id"],
-                                "name": tc["name"].replace(".", "__"),
+                                "name": tc["name"],
                                 "input": tc["args"]
                             }
                         })
@@ -99,7 +99,7 @@ async def milo_agent(state: AgentState, config: RunnableConfig):
         elif event["type"] == "tool_use_start":
             current_tool_call = {
                 "id": event["toolUseId"],
-                "name": event["name"].replace("__", "."),
+                "name": event["name"],
                 "args_str": ""
             }
             await queue.put(event)

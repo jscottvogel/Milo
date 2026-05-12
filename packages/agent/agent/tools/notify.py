@@ -16,7 +16,7 @@ class PushNotifyOutput(BaseModel):
     error: str | None = Field(default=None, description="Error message if delivery failed")
 
 class PushNotifyTool(Tool):
-    name = "push.notify"
+    name = "push__notify"
     description = "Send a proactive push notification or alert to the user. Use this to notify the user of triggers or daily briefings without human prompt."
     input_schema = PushNotifyInput
     output_schema = PushNotifyOutput

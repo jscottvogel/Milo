@@ -20,7 +20,7 @@ class TriggerEvaluateOutput(BaseModel):
 
 
 class TriggerEvaluateTool(Tool):
-    name = "trigger.evaluate"
+    name = "trigger__evaluate"
     description = "Evaluate all configured trigger rules and fire any actions whose conditions are met."
     input_schema = TriggerEvaluateInput
     output_schema = TriggerEvaluateOutput

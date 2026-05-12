@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from db.models.agent import Message, ToolCall, Approval
 from db.models.integrations import IntegrationEvent
+from db.models.program import WorkItem
 
 router = APIRouter(prefix="/v1/activities", tags=["activities"])
 
@@ -63,12 +64,13 @@ def get_recent_activities(request: Request):
         else:
             time_str = f"{int(minutes/1440)} days ago"
             
-        activities.append(ActivityResponse(
-            id=str(event.id),
-            action=action_text,
-            time=time_str,
-            type=type_val
-        ))
+        activities.append({
+            "id": str(event.id),
+            "action": action_text,
+            "time_str": time_str,
+            "type": type_val,
+            "ts": event.created_at
+        })
         
     # Also fetch recent approvals
     stmt_app = select(Approval).where(Approval.tenant_id == tenant_id).order_by(Approval.created_at.desc()).limit(5)
@@ -82,22 +84,29 @@ def get_recent_activities(request: Request):
         now = datetime.datetime.now(datetime.UTC)
         diff = now - app.created_at.replace(tzinfo=datetime.UTC)
         minutes = int(diff.total_seconds() / 60)
-        if minutes < 60:
-            time_str = f"{minutes} mins ago"
-        elif minutes < 1440:
-            time_str = f"{int(minutes/60)} hours ago"
-        else:
-            time_str = f"{int(minutes/1440)} days ago"
+        time_str = f"{minutes} mins ago" if minutes < 60 else f"{int(minutes/60)} hours ago" if minutes < 1440 else f"{int(minutes/1440)} days ago"
             
-        activities.append(ActivityResponse(
-            id=str(app.id),
-            action=action,
-            time=time_str,
-            type="approval"
-        ))
+        activities.append({
+            "id": str(app.id), "action": action, "time_str": time_str, "type": "approval", "ts": app.created_at
+        })
         
-    # Sort them by creation time conceptually? 
-    # Since we mapped them loosely, we'll just return as is or could sort by id timestamp if UUIDv7, but they are UUIDv4.
-    # For PoC, the combined list is fine.
+    # Also fetch recent work items
+    stmt_wi = select(WorkItem).where(WorkItem.tenant_id == tenant_id).order_by(WorkItem.created_at.desc()).limit(5)
+    work_items = db.scalars(stmt_wi).all()
+    for wi in work_items:
+        action = f"Added {wi.item_type} '{wi.name}'"
+        if wi.status == 'completed': action = f"Completed {wi.item_type} '{wi.name}'"
+        
+        now = datetime.datetime.now(datetime.UTC)
+        diff = now - wi.created_at.replace(tzinfo=datetime.UTC)
+        minutes = int(diff.total_seconds() / 60)
+        time_str = f"{minutes} mins ago" if minutes < 60 else f"{int(minutes/60)} hours ago" if minutes < 1440 else f"{int(minutes/1440)} days ago"
+        
+        activities.append({
+            "id": str(wi.id), "action": action, "time_str": time_str, "type": "system", "ts": wi.created_at
+        })
+        
+    # Sort them by timestamp descending
+    activities.sort(key=lambda x: x["ts"].timestamp(), reverse=True)
     
-    return activities[:10]
+    return [ActivityResponse(id=a["id"], action=a["action"], time=a["time_str"], type=a["type"]) for a in activities[:10]]

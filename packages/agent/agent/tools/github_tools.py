@@ -24,7 +24,7 @@ class GithubReadOutput(BaseModel):
     error: Optional[str] = None
 
 class GithubReadTool(Tool):
-    name = "github.read"
+    name = "github__read"
     description = "Read information from GitHub, including issues, pull requests, CI status, and commits."
     input_schema = GithubReadInput
     output_schema = GithubReadOutput
@@ -88,7 +88,7 @@ class GithubWriteOutput(BaseModel):
     error: Optional[str] = None
 
 class GithubWriteTool(Tool):
-    name = "github.write"
+    name = "github__write"
     description = "Write data to GitHub, including creating issues, branching, and posting PR/issue comments."
     input_schema = GithubWriteInput
     output_schema = GithubWriteOutput

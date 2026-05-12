@@ -18,7 +18,7 @@ class PortfolioReadOutput(BaseModel):
     error: Optional[str] = None
 
 class PortfolioReadTool(Tool):
-    name = "portfolio.read"
+    name = "portfolio__read"
     description = "Read the overall portfolio view across all active programs for the tenant, returning aggregated health (RAG), milestone count, overdue tasks, and budget variance."
     input_schema = PortfolioReadInput
     output_schema = PortfolioReadOutput

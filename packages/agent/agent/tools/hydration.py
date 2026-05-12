@@ -20,7 +20,7 @@ class ExtractManifestOutput(BaseModel):
     manifest_preview: str
 
 class ExtractManifestTool(Tool):
-    name = "program.extract_manifest"
+    name = "program__extract_manifest"
     description = "Read a document, extract a structured hydration manifest JSON, and stage it for execution."
     input_schema = ExtractManifestInput
     output_schema = ExtractManifestOutput
@@ -112,7 +112,7 @@ class ExecuteHydrationOutput(BaseModel):
     message: str
 
 class ExecuteHydrationTool(Tool):
-    name = "program.execute_hydration"
+    name = "program__execute_hydration"
     description = "Triggers the async Sequential Hydration Engine for a previously extracted manifest run_id."
     input_schema = ExecuteHydrationInput
     output_schema = ExecuteHydrationOutput
@@ -150,7 +150,7 @@ class ReconcileDiffOutput(BaseModel):
     already_correct_count: int
 
 class ReconcileDiffTool(Tool):
-    name = "program.reconcile_diff"
+    name = "program__reconcile_diff"
     description = "Reads a hydration manifest, compares it to the database, and produces a reconciliation diff (to_create, to_reparent, to_archive, already_correct)."
     input_schema = ReconcileDiffInput
     output_schema = ReconcileDiffOutput
@@ -282,7 +282,7 @@ class ExecuteReconciliationOutput(BaseModel):
     message: str
 
 class ExecuteReconciliationTool(Tool):
-    name = "program.execute_reconciliation"
+    name = "program__execute_reconciliation"
     description = "Executes the reconciliation diff (archives, reparents, creates) for a given run_id."
     input_schema = ExecuteReconciliationInput
     output_schema = ExecuteReconciliationOutput

@@ -17,7 +17,7 @@ class StorageListOutput(BaseModel):
 
 
 class StorageListTool(Tool):
-    name = "storage.list"
+    name = "storage__list"
     description = "List the files available in a tenant storage directory."
     input_schema = StorageListInput
     output_schema = StorageListOutput
@@ -55,7 +55,7 @@ class StorageReadOutput(BaseModel):
 
 
 class StorageReadTool(Tool):
-    name = "storage.read"
+    name = "storage__read"
     description = "Read the text content of a file from tenant storage."
     input_schema = StorageReadInput
     output_schema = StorageReadOutput
@@ -88,7 +88,7 @@ class StorageWriteOutput(BaseModel):
 
 
 class StorageWriteTool(Tool):
-    name = "storage.write"
+    name = "storage__write"
     description = "Write text content to a file in tenant storage. Writing to shared folders requires approval."
     input_schema = StorageWriteInput
     output_schema = StorageWriteOutput

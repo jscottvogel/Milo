@@ -1,15 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchDashboard } from "@/lib/api";
+import { fetchPortfolio } from "@/lib/api";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { AlertCircle } from "lucide-react";
 
 export function HealthRings() {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: fetchDashboard,
-    refetchInterval: 30000,
+    queryKey: ['portfolio'],
+    queryFn: () => fetchPortfolio(),
+    refetchInterval: 300000, // 5 minutes
   });
 
   if (isLoading) {
@@ -20,7 +20,7 @@ export function HealthRings() {
     return <div className="bg-white/5 border border-white/10 rounded-xl p-4 h-full flex items-center justify-center text-red-400 min-h-[200px]">Failed to load health status.</div>;
   }
 
-  const rootItems = data.root_items || [];
+  const rootItems = data.portfolio || [];
   
   if (rootItems.length === 0) {
     return (
@@ -34,8 +34,8 @@ export function HealthRings() {
 
   let green = 0, amber = 0, red = 0;
   rootItems.forEach((p: any) => {
-    if (p.status === 'blocked') red++;
-    else if (p.status === 'at_risk') amber++;
+    if (p.health === 'red' || p.status === 'blocked') red++;
+    else if (p.health === 'amber' || p.status === 'at_risk') amber++;
     else green++;
   });
 

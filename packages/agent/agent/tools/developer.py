@@ -22,7 +22,7 @@ class DeveloperHandoffOutput(BaseModel):
 
 
 class DeveloperHandoffTool(Tool):
-    name = "developer.handoff"
+    name = "developer__handoff"
     description = "Write a highly structured technical requirements document directly to the engineering team's local workspace so they can build the requested capability."
     input_schema = DeveloperHandoffInput
     output_schema = DeveloperHandoffOutput

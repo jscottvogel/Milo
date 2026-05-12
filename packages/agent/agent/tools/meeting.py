@@ -16,7 +16,7 @@ class MeetingAttendOutput(BaseModel):
     status: str
 
 class MeetingAttendTool(Tool):
-    name = "meeting.attend"
+    name = "meeting__attend"
     description = "Deploy the Nylas Notetaker bot to attend, record, and transcribe a Zoom, Teams, or Google Meet session."
     input_schema = MeetingAttendInput
     output_schema = MeetingAttendOutput

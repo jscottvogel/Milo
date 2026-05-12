@@ -12,6 +12,7 @@ export default function ApprovalsQueue() {
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
   const loadApprovals = () => {
     fetchApprovals().then((data: any[]) => {
@@ -41,6 +42,9 @@ export default function ApprovalsQueue() {
   }, []);
 
   const handleAction = async (id: string, action: 'approved' | 'rejected') => {
+    if (processingIds.has(id)) return;
+    setProcessingIds(prev => new Set(prev).add(id));
+    
     try {
       // Optimistically update
       const item = pending.find(i => i.id === id);
@@ -54,6 +58,12 @@ export default function ApprovalsQueue() {
     } catch (err) {
       console.error(err);
       loadApprovals(); // Revert on failure
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -104,14 +114,16 @@ export default function ApprovalsQueue() {
                   <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button 
                       onClick={() => handleAction(item.id, 'rejected')}
-                      className="px-4 py-2 bg-white/5 hover:bg-red-500/20 text-white hover:text-red-400 rounded-lg text-sm font-medium transition-colors border border-transparent hover:border-red-500/30 flex items-center gap-2"
+                      disabled={processingIds.has(item.id)}
+                      className="px-4 py-2 bg-white/5 hover:bg-red-500/20 text-white hover:text-red-400 rounded-lg text-sm font-medium transition-colors border border-transparent hover:border-red-500/30 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <XCircle className="w-4 h-4" />
                       Reject
                     </button>
                     <button 
                       onClick={() => handleAction(item.id, 'approved')}
-                      className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                      disabled={processingIds.has(item.id)}
+                      className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       Approve

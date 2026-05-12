@@ -19,7 +19,7 @@ class HandoffHumanOutput(BaseModel):
 
 
 class HandoffHumanTool(Tool):
-    name = "handoff.human"
+    name = "handoff__human"
     description = "Escalate an issue to the human owner via the approval queue."
     input_schema = HandoffHumanInput
     output_schema = HandoffHumanOutput

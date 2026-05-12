@@ -134,8 +134,7 @@ def get_portfolio(
     # Group tasks by owner_name and program
     # Tasks could be tied to a milestone (parent = milestone, grand_parent = program) or directly to program.
     # For simplicity, we just count tasks where owner_name is not null.
-    from sqlalchemy import func
-    
+
     heatmap_stmt = select(
         WorkItem.owner_name,
         func.count(WorkItem.id).label("task_count")

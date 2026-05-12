@@ -21,7 +21,7 @@ class EmailSendOutput(BaseModel):
 
 
 class EmailSendTool(Tool):
-    name = "email.send"
+    name = "email__send"
     description = "Send an email. If the integration is offline or unconfigured, this safely falls back to saving it as a draft."
     input_schema = EmailSendInput
     output_schema = EmailSendOutput
@@ -123,7 +123,7 @@ class EmailReadOutput(BaseModel):
 
 
 class EmailReadTool(Tool):
-    name = "email.read"
+    name = "email__read"
     description = "Fetch emails from the connected inbox. Returns id, from, to, subject, body, timestamp, thread_id, read_status."
     input_schema = EmailReadInput
     output_schema = EmailReadOutput
